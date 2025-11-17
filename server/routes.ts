@@ -3,9 +3,11 @@ import { createServer, type Server } from "http";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
+import crypto from "crypto";
 import { parseDocument, cleanupFile } from "./document-parser";
 import { generateBriefWithAI } from "./openai-client";
 import { meetingMetadataSchema } from "@shared/schema";
+import { storage as dbStorage } from "./storage";
 
 // Configure multer for file uploads (using memory/disk storage)
 const uploadDir = path.join(process.cwd(), "uploads");
@@ -50,6 +52,43 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Health check endpoint
   app.get("/api/health", (req, res) => {
     res.json({ status: "ok" });
+  });
+
+  // Get all briefs (history)
+  app.get("/api/briefs", async (req, res) => {
+    try {
+      const briefs = await dbStorage.getAllBriefs();
+      res.json({ success: true, briefs });
+    } catch (error) {
+      console.error("Error fetching briefs:", error);
+      res.status(500).json({
+        success: false,
+        error: "Failed to fetch briefs",
+      });
+    }
+  });
+
+  // Get specific brief
+  app.get("/api/briefs/:id", async (req, res) => {
+    try {
+      const briefId = parseInt(req.params.id);
+      const brief = await dbStorage.getBrief(briefId);
+      
+      if (!brief) {
+        return res.status(404).json({
+          success: false,
+          error: "Brief not found",
+        });
+      }
+
+      res.json({ success: true, brief });
+    } catch (error) {
+      console.error("Error fetching brief:", error);
+      res.status(500).json({
+        success: false,
+        error: "Failed to fetch brief",
+      });
+    }
   });
 
   // Generate brief endpoint
@@ -137,10 +176,59 @@ export async function registerRoutes(app: Express): Promise<Server> {
         documentContents: combinedContent,
       });
 
-      // Return the generated brief
+      // Save to database
+      // 1. Create meeting record
+      const meeting = await dbStorage.createMeeting({
+        userId: null, // No auth yet
+        title: validatedMetadata.title,
+        attendees: validatedMetadata.attendees,
+        meetingType: validatedMetadata.meetingType,
+        audienceLevel: validatedMetadata.audienceLevel,
+      });
+
+      // 2. Save brief
+      const savedBrief = await dbStorage.createBrief({
+        meetingId: meeting.id,
+        userId: null, // No auth yet
+        goal: brief.goal,
+        context: brief.context,
+        options: brief.options,
+        risksTradeoffs: brief.risksTradeoffs,
+        decisions: brief.decisions,
+        actionChecklist: brief.actionChecklist,
+        wordCount: brief.wordCount,
+      });
+
+      // 3. Save document metadata
+      for (const file of files) {
+        const fileContent = fs.readFileSync(file.path);
+        const contentHash = crypto.createHash('sha256').update(fileContent).digest('hex');
+        
+        await dbStorage.createDocument({
+          meetingId: meeting.id,
+          filename: file.originalname,
+          fileType: file.mimetype,
+          fileSize: file.size,
+          contentHash,
+        });
+      }
+
+      // 4. Create initial analytics entry
+      await dbStorage.createAnalytic({
+        briefId: savedBrief.id,
+        meetingId: meeting.id,
+        timeToDecision: null,
+        reopenCount: 0,
+        meetingEfficiencyScore: null,
+      });
+
+      // Return the generated brief with database ID
       res.json({
         success: true,
-        brief,
+        brief: {
+          ...brief,
+          id: savedBrief.id,
+        },
       });
     } catch (error) {
       console.error("Error generating brief:", error);

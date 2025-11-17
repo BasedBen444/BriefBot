@@ -9,7 +9,7 @@ import { useToast } from "@/hooks/use-toast";
 interface BriefDisplayProps {
   brief: Brief;
   metadata: MeetingMetadata;
-  onGenerateAnother: () => void;
+  onGenerateAnother?: () => void;
 }
 
 export function BriefDisplay({ brief, metadata, onGenerateAnother }: BriefDisplayProps) {
@@ -242,16 +242,18 @@ export function BriefDisplay({ brief, metadata, onGenerateAnother }: BriefDispla
       </Card>
 
       {/* Generate Another Button */}
-      <div className="flex justify-center pt-4">
-        <Button
-          variant="outline"
-          onClick={onGenerateAnother}
-          data-testid="button-generate-another"
-        >
-          <RefreshCw className="w-4 h-4 mr-2" />
-          Generate Another Brief
-        </Button>
-      </div>
+      {onGenerateAnother && (
+        <div className="flex justify-center pt-4">
+          <Button
+            variant="outline"
+            onClick={onGenerateAnother}
+            data-testid="button-generate-another"
+          >
+            <RefreshCw className="w-4 h-4 mr-2" />
+            Generate Another Brief
+          </Button>
+        </div>
+      )}
     </div>
   );
 }

@@ -11,7 +11,7 @@ Help teams arrive at meetings already aligned on goals, context, decisions, and 
 - **Backend**: Express.js with TypeScript
 - **AI**: OpenAI GPT-5 for brief generation
 - **File Processing**: Multer (uploads), Mammoth (DOCX), pdf-parse (PDF)
-- **Storage**: In-memory (ephemeral, session-based)
+- **Storage**: PostgreSQL database with Drizzle ORM (persistent with full history)
 
 ## Recent Changes (November 17, 2025)
 - Initial implementation of complete MVP
@@ -21,23 +21,33 @@ Help teams arrive at meetings already aligned on goals, context, decisions, and 
 - Integrated OpenAI GPT-5 for AI-powered brief creation
 - Added document parsing for PDF, DOCX, PPTX, and TXT files
 - Implemented export functionality (text and JSON formats)
+- **Database Persistence**: Migrated from ephemeral to PostgreSQL storage with Drizzle ORM
+- **Brief History**: Added /history page showing all generated briefs with meeting metadata
+- **Brief Detail Pages**: Individual brief viewing at /brief/:id with full meeting context
+- **Navigation**: Added global header with New Brief and History navigation
+- **Foreign Key Constraints**: Proper relational integrity across all database tables
 
 ## Project Architecture
 
 ### Frontend Structure
 - `/client/src/pages/home.tsx` - Main application page with upload, form, and brief display
+- `/client/src/pages/history.tsx` - Brief history page showing all generated briefs
+- `/client/src/pages/brief-detail.tsx` - Individual brief detail view with full metadata
+- `/client/src/App.tsx` - Main app with header navigation and routing
 - `/client/src/components/document-upload.tsx` - Drag-and-drop file upload component
 - `/client/src/components/meeting-form.tsx` - Meeting metadata form (title, attendees, type, audience)
 - `/client/src/components/brief-display.tsx` - Displays generated brief with export options
 - `/client/src/components/loading-state.tsx` - Loading skeleton during brief generation
 
 ### Backend Structure
-- `/server/routes.ts` - API endpoints for health check and brief generation
+- `/server/routes.ts` - API endpoints for health check, brief generation, and history
+- `/server/storage.ts` - Database storage layer with joined queries for briefs + meetings
+- `/server/db.ts` - Drizzle database connection configuration
 - `/server/openai-client.ts` - OpenAI integration for GPT-5 brief generation
 - `/server/document-parser.ts` - Document parsing utilities for various file types
 
 ### Shared Schema
-- `/shared/schema.ts` - TypeScript types and Zod schemas for briefs, meeting metadata, and file uploads
+- `/shared/schema.ts` - Drizzle database schema with tables for users, meetings, briefs, documents, and decision_analytics; includes TypeScript types, Zod schemas, and relational mappings
 
 ## Key Features
 
@@ -79,8 +89,70 @@ Help teams arrive at meetings already aligned on goals, context, decisions, and 
 
 ## API Endpoints
 
+### GET /api/briefs
+Returns all generated briefs with their associated meeting metadata.
+
+**Response:**
+```json
+{
+  "success": true,
+  "briefs": [
+    {
+      "id": 1,
+      "meetingId": 1,
+      "goal": "...",
+      "context": ["..."],
+      "options": [...],
+      "risksTradeoffs": ["..."],
+      "decisions": ["..."],
+      "actionChecklist": [...],
+      "wordCount": 350,
+      "createdAt": "2025-11-17T...",
+      "meeting": {
+        "id": 1,
+        "title": "Meeting Title",
+        "attendees": "Name (Role), Name (Role)",
+        "meetingType": "decision",
+        "audienceLevel": "exec",
+        "createdAt": "2025-11-17T..."
+      }
+    }
+  ]
+}
+```
+
+### GET /api/briefs/:id
+Returns a specific brief with its meeting metadata.
+
+**Response:**
+```json
+{
+  "success": true,
+  "brief": {
+    "id": 1,
+    "meetingId": 1,
+    "goal": "...",
+    "context": ["..."],
+    "options": [...],
+    "risksTradeoffs": ["..."],
+    "decisions": ["..."],
+    "actionChecklist": [...],
+    "wordCount": 350,
+    "createdAt": "2025-11-17T...",
+    "meeting": {
+      "id": 1,
+      "title": "Meeting Title",
+      "attendees": "Name (Role), Name (Role)",
+      "meetingType": "decision",
+      "audienceLevel": "exec",
+      "createdAt": "2025-11-17T..."
+    }
+  }
+}
+```
+
 ### POST /api/generate-brief
-Generates a meeting brief from uploaded files and metadata.
+Generates a meeting brief from uploaded files and metadata. Automatically saves to database.
 
 **Request:**
 - Content-Type: multipart/form-data
@@ -101,6 +173,7 @@ Generates a meeting brief from uploaded files and metadata.
 {
   "success": true,
   "brief": {
+    "id": 1,
     "goal": "...",
     "context": ["..."],
     "options": [{"option": "...", "pros": ["..."], "cons": ["..."]}],
@@ -135,9 +208,13 @@ Generates a meeting brief from uploaded files and metadata.
 - Accessibility-first design
 
 ## Development Notes
-- Use in-memory storage (no persistent database for MVP)
+- **Database**: PostgreSQL with Drizzle ORM for persistence
+- **Migrations**: Use `npm run db:push` to sync schema changes (never write manual SQL migrations)
+- **Foreign Keys**: All tables have proper relational integrity with `.references()` constraints
 - Files are automatically cleaned up after brief generation
 - OpenAI GPT-5 model is used (latest as of August 2025)
 - All uploads stored temporarily in `/uploads` directory
 - Frontend uses TanStack Query for data fetching
 - Backend uses Express with TypeScript and TSX for runtime
+- **Storage Layer**: DatabaseStorage implementation with joined queries for briefs + meetings
+- **History**: All briefs persist to database and are viewable in /history
