@@ -219,10 +219,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
 
-      // If job is completed, include the brief
+      // If job is completed, include the brief formatted for frontend
       let brief = null;
       if (job.status === "completed" && job.resultBriefId) {
-        brief = await dbStorage.getBrief(job.resultBriefId);
+        const dbBrief = await dbStorage.getBrief(job.resultBriefId);
+        if (dbBrief) {
+          // Format the brief for the frontend (Brief type expects generatedAt, not createdAt)
+          brief = {
+            id: dbBrief.id,
+            goal: dbBrief.goal,
+            context: dbBrief.context,
+            options: dbBrief.options,
+            risksTradeoffs: dbBrief.risksTradeoffs,
+            decisions: dbBrief.decisions,
+            actionChecklist: dbBrief.actionChecklist,
+            sources: dbBrief.sources || [],
+            wordCount: dbBrief.wordCount,
+            generatedAt: dbBrief.createdAt?.toISOString() || new Date().toISOString(),
+          };
+        }
       }
 
       res.json({

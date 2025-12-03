@@ -1,7 +1,6 @@
 import OpenAI from "openai";
 
-// Using OpenAI's API integration from blueprint:javascript_openai
-// The newest OpenAI model is "gpt-5" which was released August 7, 2025. Do not change this unless explicitly requested by the user.
+// Using OpenAI's API integration
 export const openai = new OpenAI({ 
   apiKey: process.env.OPENAI_API_KEY 
 });
@@ -12,6 +11,77 @@ interface GenerateBriefParams {
   meetingType: string;
   audienceLevel: "exec" | "ic";
   documentContents: string;
+}
+
+const MAX_RETRIES = 3;
+const INITIAL_DELAY_MS = 1000;
+
+async function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+async function callOpenAIWithRetry(
+  systemPrompt: string,
+  userPrompt: string,
+  retries = MAX_RETRIES
+): Promise<string> {
+  let lastError: Error | null = null;
+  
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      console.log(`OpenAI API call attempt ${attempt}/${retries}`);
+      
+      const response = await openai.chat.completions.create({
+        model: "gpt-4o",
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt }
+        ],
+        response_format: { type: "json_object" },
+        max_tokens: 4096,
+      });
+
+      // Log response for debugging
+      console.log(`OpenAI response received: choices=${response.choices?.length}, finish_reason=${response.choices?.[0]?.finish_reason}`);
+
+      const content = response.choices?.[0]?.message?.content;
+      
+      if (!content) {
+        console.warn("OpenAI response had no content:", JSON.stringify(response.choices?.[0]?.message));
+        throw new Error("No content in OpenAI response");
+      }
+
+      return content;
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(String(error));
+      console.error(`OpenAI API attempt ${attempt} failed:`, lastError.message);
+      
+      // Don't retry on certain errors (e.g., invalid API key, rate limit exceeded for extended period)
+      if (lastError.message.includes("Invalid API key") || 
+          lastError.message.includes("authentication")) {
+        throw new Error(`OpenAI authentication failed: ${lastError.message}`);
+      }
+      
+      if (attempt < retries) {
+        const delay = INITIAL_DELAY_MS * Math.pow(2, attempt - 1);
+        console.log(`Retrying in ${delay}ms...`);
+        await sleep(delay);
+      }
+    }
+  }
+  
+  throw new Error(`OpenAI API failed after ${retries} attempts: ${lastError?.message}`);
+}
+
+function validateBriefStructure(brief: any): boolean {
+  if (!brief || typeof brief !== 'object') return false;
+  if (typeof brief.goal !== 'string') return false;
+  if (!Array.isArray(brief.context)) return false;
+  if (!Array.isArray(brief.options)) return false;
+  if (!Array.isArray(brief.risksTradeoffs)) return false;
+  if (!Array.isArray(brief.decisions)) return false;
+  if (!Array.isArray(brief.actionChecklist)) return false;
+  return true;
 }
 
 export async function generateBriefWithAI(params: GenerateBriefParams) {
@@ -65,22 +135,26 @@ ${documentContents}
 Generate a ${audienceLevel === "exec" ? "executive" : "IC"}-level brief using ONLY the information above. Include sources for all items.`;
 
   try {
-    const response = await openai.chat.completions.create({
-      model: "gpt-5",
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userPrompt }
-      ],
-      response_format: { type: "json_object" },
-      max_completion_tokens: 4096,
-    });
-
-    const content = response.choices[0].message.content;
-    if (!content) {
-      throw new Error("No content generated");
+    const content = await callOpenAIWithRetry(systemPrompt, userPrompt);
+    
+    let brief;
+    try {
+      brief = JSON.parse(content);
+    } catch (parseError) {
+      console.error("Failed to parse OpenAI response as JSON:", content.substring(0, 500));
+      throw new Error("Invalid JSON response from AI");
     }
 
-    const brief = JSON.parse(content);
+    // Validate the brief structure
+    if (!validateBriefStructure(brief)) {
+      console.error("Brief has invalid structure:", JSON.stringify(brief).substring(0, 500));
+      throw new Error("AI response missing required fields");
+    }
+
+    // Ensure sources array exists
+    if (!Array.isArray(brief.sources)) {
+      brief.sources = [];
+    }
 
     // Calculate word count
     const wordCount = calculateWordCount(brief);
@@ -89,10 +163,8 @@ Generate a ${audienceLevel === "exec" ? "executive" : "IC"}-level brief using ON
     if (wordCount > maxWords) {
       console.warn(`Brief exceeded word limit: ${wordCount} > ${maxWords}`);
       // Truncate context to bring it within limits
-      while (wordCount > maxWords && brief.context && brief.context.length > 1) {
+      while (calculateWordCount(brief) > maxWords && brief.context && brief.context.length > 1) {
         brief.context.pop();
-        const newWordCount = calculateWordCount(brief);
-        if (newWordCount <= maxWords) break;
       }
     }
 
@@ -106,7 +178,8 @@ Generate a ${audienceLevel === "exec" ? "executive" : "IC"}-level brief using ON
     };
   } catch (error) {
     console.error("OpenAI API error:", error);
-    throw new Error("Failed to generate brief with AI");
+    const errorMessage = error instanceof Error ? error.message : "Unknown error";
+    throw new Error(`Failed to generate brief: ${errorMessage}`);
   }
 }
 
