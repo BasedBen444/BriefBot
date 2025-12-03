@@ -18,9 +18,19 @@ export const actionItemSchema = z.object({
   owner: z.string(),
   task: z.string(),
   dueDate: z.string(),
+  source: z.string().optional(), // Source document reference
 });
 
 export type ActionItem = z.infer<typeof actionItemSchema>;
+
+// Source Citation Schema
+export const sourceSchema = z.object({
+  label: z.string(),
+  filename: z.string(),
+  section: z.string().nullable(),
+});
+
+export type Source = z.infer<typeof sourceSchema>;
 
 // Brief Schema
 export const briefSchema = z.object({
@@ -34,6 +44,7 @@ export const briefSchema = z.object({
   risksTradeoffs: z.array(z.string()),
   decisions: z.array(z.string()),
   actionChecklist: z.array(actionItemSchema),
+  sources: z.array(sourceSchema).optional(), // Document sources used
   wordCount: z.number(),
   generatedAt: z.string(),
 });
@@ -111,7 +122,8 @@ export const briefs = pgTable("briefs", {
   options: jsonb("options").notNull().$type<Array<{ option: string; pros: string[]; cons: string[] }>>(),
   risksTradeoffs: jsonb("risks_tradeoffs").notNull().$type<string[]>(),
   decisions: jsonb("decisions").notNull().$type<string[]>(),
-  actionChecklist: jsonb("action_checklist").notNull().$type<Array<{ owner: string; task: string; dueDate: string }>>(),
+  actionChecklist: jsonb("action_checklist").notNull().$type<Array<{ owner: string; task: string; dueDate: string; source?: string }>>(),
+  sources: jsonb("sources").$type<Array<{ label: string; filename: string; section: string | null }>>(),
   wordCount: integer("word_count").notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });

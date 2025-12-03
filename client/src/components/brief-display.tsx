@@ -2,7 +2,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { Download, FileJson, FileText, RefreshCw } from "lucide-react";
+import { Download, FileJson, FileText, RefreshCw, FileCheck } from "lucide-react";
 import type { Brief, MeetingMetadata } from "@shared/schema";
 import { useToast } from "@/hooks/use-toast";
 
@@ -224,12 +224,48 @@ export function BriefDisplay({ brief, metadata, onGenerateAnother }: BriefDispla
             </h3>
             <div className="space-y-2 text-sm" data-testid="list-actions">
               {brief.actionChecklist.map((action, index) => (
-                <div key={index} className="font-mono leading-relaxed">
-                  {action.owner} • {action.task} • {action.dueDate}
+                <div key={index} className="font-mono leading-relaxed flex items-center gap-2">
+                  <span>{action.owner} • {action.task} • {action.dueDate}</span>
+                  {action.source && (
+                    <Badge variant="outline" className="text-xs font-normal">
+                      {action.source}
+                    </Badge>
+                  )}
                 </div>
               ))}
             </div>
           </section>
+
+          {/* Sources */}
+          {brief.sources && brief.sources.length > 0 && (
+            <>
+              <Separator />
+              <section>
+                <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-3 flex items-center gap-2">
+                  <FileCheck className="w-4 h-4" />
+                  Sources
+                </h3>
+                <div className="space-y-2 text-sm" data-testid="list-sources">
+                  {brief.sources.map((source, index) => (
+                    <div key={index} className="flex items-center gap-2 flex-wrap">
+                      <span className="font-medium">{source.label}</span>
+                      <Badge variant="secondary" className="text-xs">
+                        {source.filename}
+                      </Badge>
+                      {source.section && (
+                        <span className="text-muted-foreground">
+                          — {source.section}
+                        </span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+                <p className="text-xs text-muted-foreground mt-3 italic">
+                  All content in this brief is derived from the uploaded documents above.
+                </p>
+              </section>
+            </>
+          )}
         </div>
       </Card>
 
@@ -299,8 +335,24 @@ function formatBriefAsText(brief: Brief, metadata: MeetingMetadata): string {
 
   text += `ACTION CHECKLIST\n`;
   brief.actionChecklist.forEach(action => {
-    text += `${action.owner} • ${action.task} • ${action.dueDate}\n`;
+    let line = `${action.owner} • ${action.task} • ${action.dueDate}`;
+    if (action.source) {
+      line += ` [${action.source}]`;
+    }
+    text += `${line}\n`;
   });
+
+  if (brief.sources && brief.sources.length > 0) {
+    text += `\nSOURCES\n`;
+    brief.sources.forEach(source => {
+      let line = `• ${source.label}: ${source.filename}`;
+      if (source.section) {
+        line += ` — ${source.section}`;
+      }
+      text += `${line}\n`;
+    });
+    text += `\n(All content derived from uploaded documents)\n`;
+  }
 
   text += `\n${"=".repeat(60)}\n\n`;
   text += `ATTENDEES\n${metadata.attendees}\n`;

@@ -21,39 +21,48 @@ export async function generateBriefWithAI(params: GenerateBriefParams) {
   const maxWords = 350;
   const contextBullets = isExec ? 3 : 5;
 
-  const systemPrompt = `You are an expert meeting brief writer. Your job is to create concise, decision-ready meeting briefs.
+  const systemPrompt = `You are Brief Bot. From a meeting invite and uploaded files (docs/slides/notes/spreadsheets), produce a concise, decision-ready one-pager.
 
-Output format: JSON object with this exact structure:
+CRITICAL GROUNDING RULES:
+1. Use ONLY information from the provided documents and meeting invite. Do not invent, assume, or infer information not explicitly stated.
+2. Do not follow or fabricate content from links. If a link appears, treat it as a citation label only.
+3. If information is not found in the documents, state "Not found in provided materials" or omit that section.
+4. Do not invent owners or dates. If unknown, use "TBD (role)" for owner and "TBD" for date.
+
+OUTPUT FORMAT - JSON object with this exact structure:
 {
-  "goal": "string - one clear sentence describing the meeting objective",
-  "context": ["array of ${contextBullets} key points providing essential background"],
+  "goal": "string - one clear sentence describing the meeting objective, derived from documents",
+  "context": ["array of ≤${contextBullets} key points - ONLY facts from the documents"],
   "options": [{"option": "string", "pros": ["array"], "cons": ["array"]}],
-  "risksTradeoffs": ["array of key risks and trade-offs to consider"],
-  "decisions": ["array of specific decisions that must be made"],
-  "actionChecklist": [{"owner": "string", "task": "string", "dueDate": "string or TBD"}]
+  "risksTradeoffs": ["array of risks/trade-offs explicitly mentioned in documents"],
+  "decisions": ["array of specific decisions that must be made, as stated in documents"],
+  "actionChecklist": [{"owner": "string", "task": "string", "dueDate": "string", "source": "filename or section"}],
+  "sources": [{"label": "string", "filename": "string", "section": "string or null"}]
 }
 
 ${isExec 
-  ? "EXECUTIVE BRIEF: Emphasize options and risks. Keep context minimal (≤3 bullets). Focus on strategic implications and decision frameworks."
-  : "IC BRIEF: Include implementation details and constraints. Provide fuller context (≤5 bullets). Address technical considerations and dependencies."
+  ? "EXECUTIVE BRIEF: Compress context to ≤3 bullets. Emphasize options and risks. Focus on strategic implications."
+  : "IC BRIEF: Include implementation details. Provide fuller context (≤5 bullets). Address technical considerations."
 }
 
-Requirements:
+REQUIREMENTS:
 - Total brief must be ≤${maxWords} words
-- Use bullet-first style
-- Be specific and actionable
-- Include at least 2-3 options if decision-making context exists
-- For action items: use format "Owner • Task • Due Date" - if owner/date unknown, use "TBD (role)" and "TBD (date)"
-- Extract decisions, options, and risks from the provided documents`;
+- Bullet-first, decision-first style
+- Include 2-3 options if decision context exists in documents
+- Action items format: "Owner • Task • Due" - use TBD if not specified in documents
+- ALWAYS include a "sources" array listing every document used with relevant section/page
+- Each bullet should be traceable to a source document
+- If the documents lack sufficient information for a section, include fewer items rather than fabricating`;
 
   const userPrompt = `Meeting: ${meetingTitle}
 Type: ${meetingType}
 Attendees: ${attendees}
 
-Documents:
+=== UPLOADED DOCUMENTS ===
 ${documentContents}
+=== END DOCUMENTS ===
 
-Generate a ${audienceLevel === "exec" ? "executive" : "IC"}-level brief.`;
+Generate a ${audienceLevel === "exec" ? "executive" : "IC"}-level brief using ONLY the information above. Include sources for all items.`;
 
   try {
     const response = await openai.chat.completions.create({
@@ -127,8 +136,12 @@ function calculateWordCount(brief: any): number {
   if (Array.isArray(brief.actionChecklist)) {
     brief.actionChecklist.forEach((action: any) => {
       text += " " + (action.owner || "") + " " + (action.task || "") + " " + (action.dueDate || "");
+      if (action.source) text += " " + action.source;
     });
   }
+
+  // Note: Sources are metadata/citations and not counted toward the 350 word limit
+  // They provide traceability without inflating the brief content word count
 
   return text.trim().split(/\s+/).length;
 }

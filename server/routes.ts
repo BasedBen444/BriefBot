@@ -196,6 +196,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         risksTradeoffs: brief.risksTradeoffs,
         decisions: brief.decisions,
         actionChecklist: brief.actionChecklist,
+        sources: brief.sources || null,
         wordCount: brief.wordCount,
       });
 
