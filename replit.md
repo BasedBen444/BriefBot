@@ -24,6 +24,14 @@ Help teams arrive at meetings already aligned on goals, context, decisions, and 
   - Exponential backoff (1s, 2s, 4s delays) on transient errors
   - Response validation ensures brief has all required fields
   - Detailed logging for debugging OpenAI responses
+- **Per-Section Source Citations**: All brief sections now include inline citations
+  - Every item in Goal, Context, Options, Risks, and Decisions ends with [Source: filename.ext]
+  - Sources array explicitly lists ALL uploaded files (including CSV, XLS, etc.)
+  - Post-processing ensures no uploaded file is missing from sources
+- **Persistent Job State**: Brief generation continues across navigation
+  - Job ID and metadata stored in localStorage during generation
+  - Automatically resumes polling when returning to homepage
+  - State cleared only on completion, failure, or explicit reset
 - **Grounded AI System Prompt**: Revised system prompt with strict grounding rules ("use ONLY provided documents"), TBD policy for unknown owners/dates, audience-specific context limits (exec ≤3, ic ≤5), and "insufficient evidence" handling
 - **Source Citations**: Added mandatory sources array with label, filename, and section for all brief content; displayed in Sources section with badges
 - **Expanded File Support**: Added CSV, XLS/XLSX, and Markdown file parsing with csv-parse and xlsx libraries
