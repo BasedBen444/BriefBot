@@ -9,16 +9,21 @@ Help teams arrive at meetings already aligned on goals, context, decisions, and 
 ## Technology Stack
 - **Frontend**: React with TypeScript, Tailwind CSS, Shadcn UI components
 - **Backend**: Express.js with TypeScript
-- **AI**: OpenAI GPT-5 for brief generation
+- **AI**: OpenAI GPT-4o for brief generation
 - **File Processing**: Multer (uploads), Mammoth (DOCX), pdf-parse (PDF), csv-parse (CSV), xlsx (XLS/XLSX)
 - **Storage**: PostgreSQL database with Drizzle ORM (persistent with full history)
 
 ## Recent Changes (December 3, 2025)
 - **Async Brief Generation**: Refactored brief generation to use a job-based async system to prevent timeouts with large/multiple files
   - POST /api/generate-brief now returns a jobId immediately
-  - Frontend polls GET /api/jobs/:id for status and progress
+  - Frontend polls GET /api/jobs/:id for status and progress (every 1.5s)
   - Progress bar shows real-time status (0-100%)
   - Jobs table tracks status: pending → processing → completed/failed
+- **Robust OpenAI Integration**: Enhanced reliability with retry logic
+  - Uses gpt-4o model with 3 retry attempts
+  - Exponential backoff (1s, 2s, 4s delays) on transient errors
+  - Response validation ensures brief has all required fields
+  - Detailed logging for debugging OpenAI responses
 - **Grounded AI System Prompt**: Revised system prompt with strict grounding rules ("use ONLY provided documents"), TBD policy for unknown owners/dates, audience-specific context limits (exec ≤3, ic ≤5), and "insufficient evidence" handling
 - **Source Citations**: Added mandatory sources array with label, filename, and section for all brief content; displayed in Sources section with badges
 - **Expanded File Support**: Added CSV, XLS/XLSX, and Markdown file parsing with csv-parse and xlsx libraries
