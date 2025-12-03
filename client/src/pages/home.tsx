@@ -1,19 +1,114 @@
-import { useState } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useMutation } from "@tanstack/react-query";
-import { apiRequest } from "@/lib/queryClient";
 import { DocumentUpload } from "@/components/document-upload";
 import { MeetingForm } from "@/components/meeting-form";
 import { BriefDisplay } from "@/components/brief-display";
 import { LoadingState } from "@/components/loading-state";
 import type { UploadedFile, MeetingMetadata, Brief } from "@shared/schema";
 import { FileText } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
+
+type JobStatus = "pending" | "processing" | "completed" | "failed";
+
+interface JobResponse {
+  success: boolean;
+  job: {
+    id: number;
+    status: JobStatus;
+    progress: number;
+    error: string | null;
+    resultBriefId: number | null;
+  };
+  brief: Brief | null;
+}
 
 export default function Home() {
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
   const [metadata, setMetadata] = useState<MeetingMetadata | null>(null);
   const [generatedBrief, setGeneratedBrief] = useState<Brief | null>(null);
+  const [jobId, setJobId] = useState<number | null>(null);
+  const [jobProgress, setJobProgress] = useState<number>(0);
+  const [isPolling, setIsPolling] = useState<boolean>(false);
+  const pollingIntervalRef = useRef<number | null>(null);
+  const { toast } = useToast();
 
-  const generateBriefMutation = useMutation({
+  // Poll for job status
+  const pollJobStatus = useCallback(async (id: number) => {
+    try {
+      const response = await fetch(`/api/jobs/${id}`, {
+        credentials: "include",
+      });
+      
+      if (!response.ok) {
+        throw new Error("Failed to fetch job status");
+      }
+
+      const data: JobResponse = await response.json();
+      
+      if (data.success) {
+        setJobProgress(data.job.progress);
+
+        if (data.job.status === "completed" && data.brief) {
+          // Job completed successfully
+          setGeneratedBrief(data.brief);
+          setIsPolling(false);
+          setJobId(null);
+          if (pollingIntervalRef.current) {
+            clearInterval(pollingIntervalRef.current);
+            pollingIntervalRef.current = null;
+          }
+        } else if (data.job.status === "failed") {
+          // Job failed
+          setIsPolling(false);
+          setJobId(null);
+          if (pollingIntervalRef.current) {
+            clearInterval(pollingIntervalRef.current);
+            pollingIntervalRef.current = null;
+          }
+          toast({
+            title: "Brief generation failed",
+            description: data.job.error || "An unknown error occurred",
+            variant: "destructive",
+          });
+        }
+        // If still pending or processing, continue polling
+      }
+    } catch (error) {
+      console.error("Error polling job status:", error);
+      // Don't stop polling on transient errors
+    }
+  }, [toast]);
+
+  // Start polling when jobId changes
+  useEffect(() => {
+    if (jobId && isPolling) {
+      // Initial poll
+      pollJobStatus(jobId);
+      
+      // Set up interval polling every 1.5 seconds
+      pollingIntervalRef.current = window.setInterval(() => {
+        pollJobStatus(jobId);
+      }, 1500);
+
+      return () => {
+        if (pollingIntervalRef.current) {
+          clearInterval(pollingIntervalRef.current);
+          pollingIntervalRef.current = null;
+        }
+      };
+    }
+  }, [jobId, isPolling, pollJobStatus]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (pollingIntervalRef.current) {
+        clearInterval(pollingIntervalRef.current);
+      }
+    };
+  }, []);
+
+  const submitJobMutation = useMutation({
     mutationFn: async (data: FormData) => {
       const response = await fetch("/api/generate-brief", {
         method: "POST",
@@ -22,14 +117,25 @@ export default function Home() {
       });
 
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ error: "Failed to generate brief" }));
-        throw new Error(errorData.error || "Failed to generate brief");
+        const errorData = await response.json().catch(() => ({ error: "Failed to start brief generation" }));
+        throw new Error(errorData.error || "Failed to start brief generation");
       }
 
       return await response.json();
     },
     onSuccess: (data) => {
-      setGeneratedBrief(data.brief);
+      if (data.success && data.jobId) {
+        setJobId(data.jobId);
+        setJobProgress(0);
+        setIsPolling(true);
+      }
+    },
+    onError: (error) => {
+      toast({
+        title: "Failed to start brief generation",
+        description: error instanceof Error ? error.message : "An error occurred",
+        variant: "destructive",
+      });
     },
   });
 
@@ -45,14 +151,23 @@ export default function Home() {
       formData.append("files", uploadedFile.file);
     });
 
-    generateBriefMutation.mutate(formData);
+    submitJobMutation.mutate(formData);
   };
 
   const handleReset = () => {
     setGeneratedBrief(null);
     setUploadedFiles([]);
     setMetadata(null);
+    setJobId(null);
+    setJobProgress(0);
+    setIsPolling(false);
+    if (pollingIntervalRef.current) {
+      clearInterval(pollingIntervalRef.current);
+      pollingIntervalRef.current = null;
+    }
   };
+
+  const isLoading = submitJobMutation.isPending || isPolling;
 
   return (
     <div className="min-h-screen bg-background">
@@ -70,8 +185,8 @@ export default function Home() {
 
       {/* Main Content */}
       <main className="max-w-5xl mx-auto px-4 md:px-8 lg:px-12 py-8 md:py-12">
-        {generateBriefMutation.isPending ? (
-          <LoadingState />
+        {isLoading ? (
+          <LoadingState progress={jobProgress} />
         ) : generatedBrief ? (
           <div className="space-y-6">
             <BriefDisplay 
@@ -101,12 +216,12 @@ export default function Home() {
             {uploadedFiles.length > 0 && (
               <MeetingForm 
                 onSubmit={handleGenerateBrief}
-                isGenerating={generateBriefMutation.isPending}
+                isGenerating={isLoading}
               />
             )}
 
             {/* Error Display */}
-            {generateBriefMutation.isError && (
+            {submitJobMutation.isError && (
               <div 
                 className="rounded-lg border-l-4 border-l-destructive bg-destructive/10 p-4" 
                 role="alert"

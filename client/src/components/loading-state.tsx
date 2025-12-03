@@ -1,8 +1,21 @@
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Progress } from "@/components/ui/progress";
 import { Loader2 } from "lucide-react";
 
-export function LoadingState() {
+interface LoadingStateProps {
+  progress?: number;
+}
+
+export function LoadingState({ progress = 0 }: LoadingStateProps) {
+  const getStatusMessage = () => {
+    if (progress < 10) return "Preparing documents...";
+    if (progress < 30) return "Processing uploaded files...";
+    if (progress < 70) return "Analyzing with AI...";
+    if (progress < 85) return "Creating your brief...";
+    return "Finalizing...";
+  };
+
   return (
     <div className="space-y-6 max-w-3xl mx-auto">
       {/* Loading Header */}
@@ -13,7 +26,15 @@ export function LoadingState() {
         <div className="space-y-2">
           <h2 className="text-2xl font-semibold">Generating Your Brief</h2>
           <p className="text-base text-muted-foreground">
-            Analyzing documents and creating a decision-ready summary...
+            {getStatusMessage()}
+          </p>
+        </div>
+        
+        {/* Progress Bar */}
+        <div className="max-w-md mx-auto space-y-2">
+          <Progress value={progress} className="h-2" data-testid="progress-bar" />
+          <p className="text-sm text-muted-foreground" data-testid="text-progress">
+            {progress}% complete
           </p>
         </div>
       </div>
