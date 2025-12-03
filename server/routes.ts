@@ -6,7 +6,7 @@ import fs from "fs";
 import crypto from "crypto";
 import { parseDocument, cleanupFile } from "./document-parser";
 import { generateBriefWithAI } from "./openai-client";
-import { meetingMetadataSchema } from "@shared/schema";
+import { meetingMetadataSchema, type MeetingMetadata } from "@shared/schema";
 import { storage as dbStorage } from "./storage";
 
 // Configure multer for file uploads (using memory/disk storage)
@@ -58,6 +58,111 @@ const upload = multer({
   },
 });
 
+// Background job processor
+async function processJob(jobId: number) {
+  try {
+    // Get job details
+    const job = await dbStorage.getJob(jobId);
+    if (!job || job.status !== "pending") {
+      return;
+    }
+
+    // Update status to processing
+    await dbStorage.updateJob(jobId, { 
+      status: "processing",
+      progress: 10,
+    });
+
+    const metadata = job.metadata as MeetingMetadata;
+    const documentContents = job.documentContents as Array<{ filename: string; content: string }>;
+    const documentFiles = job.documentFiles as Array<{ filename: string; fileType: string; fileSize: number }> | null;
+
+    // Combine all document contents
+    const combinedContent = documentContents
+      .map(doc => `--- ${doc.filename} ---\n${doc.content}`)
+      .join("\n\n");
+
+    // Update progress
+    await dbStorage.updateJob(jobId, { progress: 30 });
+
+    // Generate brief with AI
+    const brief = await generateBriefWithAI({
+      meetingTitle: metadata.title,
+      attendees: metadata.attendees,
+      meetingType: metadata.meetingType,
+      audienceLevel: metadata.audienceLevel,
+      documentContents: combinedContent,
+    });
+
+    // Update progress
+    await dbStorage.updateJob(jobId, { progress: 70 });
+
+    // Save to database
+    // 1. Create meeting record
+    const meeting = await dbStorage.createMeeting({
+      userId: null, // No auth yet
+      title: metadata.title,
+      attendees: metadata.attendees,
+      meetingType: metadata.meetingType,
+      audienceLevel: metadata.audienceLevel,
+    });
+
+    // 2. Save brief
+    const savedBrief = await dbStorage.createBrief({
+      meetingId: meeting.id,
+      userId: null, // No auth yet
+      goal: brief.goal,
+      context: brief.context,
+      options: brief.options,
+      risksTradeoffs: brief.risksTradeoffs,
+      decisions: brief.decisions,
+      actionChecklist: brief.actionChecklist,
+      sources: brief.sources || null,
+      wordCount: brief.wordCount,
+    });
+
+    // Update progress
+    await dbStorage.updateJob(jobId, { progress: 85 });
+
+    // 3. Save document metadata if available
+    if (documentFiles) {
+      for (const file of documentFiles) {
+        await dbStorage.createDocument({
+          meetingId: meeting.id,
+          filename: file.filename,
+          fileType: file.fileType,
+          fileSize: file.fileSize,
+          contentHash: null,
+        });
+      }
+    }
+
+    // 4. Create initial analytics entry
+    await dbStorage.createAnalytic({
+      briefId: savedBrief.id,
+      meetingId: meeting.id,
+      timeToDecision: null,
+      reopenCount: 0,
+      meetingEfficiencyScore: null,
+    });
+
+    // Update job as completed
+    await dbStorage.updateJob(jobId, {
+      status: "completed",
+      progress: 100,
+      resultBriefId: savedBrief.id,
+    });
+
+    console.log(`Job ${jobId} completed successfully, brief ID: ${savedBrief.id}`);
+  } catch (error) {
+    console.error(`Error processing job ${jobId}:`, error);
+    await dbStorage.updateJob(jobId, {
+      status: "failed",
+      error: error instanceof Error ? error.message : "Unknown error occurred",
+    });
+  }
+}
+
 export async function registerRoutes(app: Express): Promise<Server> {
   // Health check endpoint
   app.get("/api/health", (req, res) => {
@@ -101,7 +206,47 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Generate brief endpoint
+  // Get job status
+  app.get("/api/jobs/:id", async (req, res) => {
+    try {
+      const jobId = parseInt(req.params.id);
+      const job = await dbStorage.getJob(jobId);
+      
+      if (!job) {
+        return res.status(404).json({
+          success: false,
+          error: "Job not found",
+        });
+      }
+
+      // If job is completed, include the brief
+      let brief = null;
+      if (job.status === "completed" && job.resultBriefId) {
+        brief = await dbStorage.getBrief(job.resultBriefId);
+      }
+
+      res.json({
+        success: true,
+        job: {
+          id: job.id,
+          status: job.status,
+          progress: job.progress || 0,
+          error: job.error,
+          resultBriefId: job.resultBriefId,
+          createdAt: job.createdAt,
+        },
+        brief: brief,
+      });
+    } catch (error) {
+      console.error("Error fetching job:", error);
+      res.status(500).json({
+        success: false,
+        error: "Failed to fetch job status",
+      });
+    }
+  });
+
+  // Generate brief endpoint - now creates a job and returns immediately
   app.post("/api/generate-brief", upload.array("files", 10), async (req, res) => {
     const uploadedFiles: Express.Multer.File[] = [];
     
@@ -149,8 +294,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const validatedMetadata = validationResult.data;
 
-      // Parse all documents
+      // Parse all documents immediately (this is fast)
       const documentContents: Array<{ filename: string; content: string }> = [];
+      const documentFiles: Array<{ filename: string; fileType: string; fileSize: number }> = [];
       
       for (const file of files) {
         try {
@@ -158,6 +304,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
           documentContents.push({
             filename: file.originalname,
             content: content.trim(),
+          });
+          documentFiles.push({
+            filename: file.originalname,
+            fileType: file.mimetype,
+            fileSize: file.size,
           });
         } catch (error) {
           console.error(`Error parsing ${file.originalname}:`, error);
@@ -172,89 +323,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
 
-      // Combine all document contents
-      const combinedContent = documentContents
-        .map(doc => `--- ${doc.filename} ---\n${doc.content}`)
-        .join("\n\n");
-
-      // Generate brief with AI
-      const brief = await generateBriefWithAI({
-        meetingTitle: validatedMetadata.title,
-        attendees: validatedMetadata.attendees,
-        meetingType: validatedMetadata.meetingType,
-        audienceLevel: validatedMetadata.audienceLevel,
-        documentContents: combinedContent,
+      // Create job record
+      const job = await dbStorage.createJob({
+        status: "pending",
+        metadata: validatedMetadata,
+        documentContents: documentContents,
+        documentFiles: documentFiles,
+        progress: 0,
       });
 
-      // Save to database
-      // 1. Create meeting record
-      const meeting = await dbStorage.createMeeting({
-        userId: null, // No auth yet
-        title: validatedMetadata.title,
-        attendees: validatedMetadata.attendees,
-        meetingType: validatedMetadata.meetingType,
-        audienceLevel: validatedMetadata.audienceLevel,
-      });
-
-      // 2. Save brief
-      const savedBrief = await dbStorage.createBrief({
-        meetingId: meeting.id,
-        userId: null, // No auth yet
-        goal: brief.goal,
-        context: brief.context,
-        options: brief.options,
-        risksTradeoffs: brief.risksTradeoffs,
-        decisions: brief.decisions,
-        actionChecklist: brief.actionChecklist,
-        sources: brief.sources || null,
-        wordCount: brief.wordCount,
-      });
-
-      // 3. Save document metadata
-      for (const file of files) {
-        const fileContent = fs.readFileSync(file.path);
-        const contentHash = crypto.createHash('sha256').update(fileContent).digest('hex');
-        
-        await dbStorage.createDocument({
-          meetingId: meeting.id,
-          filename: file.originalname,
-          fileType: file.mimetype,
-          fileSize: file.size,
-          contentHash,
-        });
-      }
-
-      // 4. Create initial analytics entry
-      await dbStorage.createAnalytic({
-        briefId: savedBrief.id,
-        meetingId: meeting.id,
-        timeToDecision: null,
-        reopenCount: 0,
-        meetingEfficiencyScore: null,
-      });
-
-      // Return the generated brief with database ID
+      // Return job ID immediately
       res.json({
         success: true,
-        brief: {
-          ...brief,
-          id: savedBrief.id,
-        },
+        jobId: job.id,
+        message: "Brief generation started. Poll /api/jobs/:id for status.",
       });
+
+      // Start processing the job asynchronously (don't await)
+      processJob(job.id).catch(err => {
+        console.error(`Background job ${job.id} failed:`, err);
+      });
+
     } catch (error) {
-      console.error("Error generating brief:", error);
-      
-      // Clean up uploaded files on error
-      for (const file of uploadedFiles) {
-        cleanupFile(file.path);
-      }
-      
+      console.error("Error starting brief generation:", error);
       res.status(500).json({
         success: false,
-        error: error instanceof Error ? error.message : "Failed to generate brief",
+        error: error instanceof Error ? error.message : "Failed to start brief generation",
       });
     } finally {
-      // Ensure all files are cleaned up
+      // Clean up uploaded files after parsing
       for (const file of uploadedFiles) {
         cleanupFile(file.path);
       }
