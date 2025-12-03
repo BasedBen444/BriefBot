@@ -12,6 +12,33 @@ interface BriefDisplayProps {
   onGenerateAnother?: () => void;
 }
 
+// Helper function to extract source citation from text
+function parseSourceCitation(text: string): { content: string; source: string | null } {
+  const sourceMatch = text.match(/\s*\[Source:\s*([^\]]+)\]\s*$/i);
+  if (sourceMatch) {
+    return {
+      content: text.replace(sourceMatch[0], "").trim(),
+      source: sourceMatch[1].trim(),
+    };
+  }
+  return { content: text, source: null };
+}
+
+// Component to render text with source badge
+function TextWithSource({ text, className }: { text: string; className?: string }) {
+  const { content, source } = parseSourceCitation(text);
+  return (
+    <span className={`flex items-start gap-2 flex-wrap ${className || ""}`}>
+      <span>{content}</span>
+      {source && (
+        <Badge variant="outline" className="text-xs font-normal shrink-0">
+          {source}
+        </Badge>
+      )}
+    </span>
+  );
+}
+
 export function BriefDisplay({ brief, metadata, onGenerateAnother }: BriefDisplayProps) {
   const { toast } = useToast();
 
@@ -116,26 +143,27 @@ export function BriefDisplay({ brief, metadata, onGenerateAnother }: BriefDispla
       <Card className="p-8 max-w-3xl" data-testid="card-brief-content">
         <div className="space-y-8">
           {/* Goal */}
-          <section>
+          <section data-testid="section-goal">
             <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-3">
               Goal
             </h3>
-            <p className="text-base leading-relaxed" data-testid="text-goal">
-              {brief.goal}
-            </p>
+            <div className="text-base leading-relaxed" data-testid="text-goal">
+              <TextWithSource text={brief.goal} />
+            </div>
           </section>
 
           <Separator />
 
           {/* Context */}
-          <section>
+          <section data-testid="section-context">
             <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-3">
               Context
             </h3>
-            <ul className="space-y-2 list-disc list-inside" data-testid="list-context">
+            <ul className="space-y-3" data-testid="list-context">
               {brief.context.map((item, index) => (
-                <li key={index} className="text-base leading-relaxed">
-                  {item}
+                <li key={index} className="text-base leading-relaxed flex items-start gap-2">
+                  <span className="text-muted-foreground mt-1">•</span>
+                  <TextWithSource text={item} />
                 </li>
               ))}
             </ul>
@@ -145,20 +173,25 @@ export function BriefDisplay({ brief, metadata, onGenerateAnother }: BriefDispla
           {brief.options.length > 0 && (
             <>
               <Separator />
-              <section>
+              <section data-testid="section-options">
                 <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-3">
                   Options
                 </h3>
                 <div className="space-y-4" data-testid="list-options">
                   {brief.options.map((option, index) => (
                     <div key={index} className="space-y-2">
-                      <p className="text-base font-medium">{option.option}</p>
+                      <div className="text-base font-medium">
+                        <TextWithSource text={option.option} />
+                      </div>
                       {option.pros.length > 0 && (
                         <div>
                           <p className="text-sm text-muted-foreground font-medium">Pros:</p>
-                          <ul className="list-disc list-inside space-y-1 ml-2">
+                          <ul className="space-y-1 ml-2">
                             {option.pros.map((pro, i) => (
-                              <li key={i} className="text-sm leading-relaxed">{pro}</li>
+                              <li key={i} className="text-sm leading-relaxed flex items-start gap-2">
+                                <span className="text-muted-foreground mt-0.5">•</span>
+                                <TextWithSource text={pro} />
+                              </li>
                             ))}
                           </ul>
                         </div>
@@ -166,9 +199,12 @@ export function BriefDisplay({ brief, metadata, onGenerateAnother }: BriefDispla
                       {option.cons.length > 0 && (
                         <div>
                           <p className="text-sm text-muted-foreground font-medium">Cons:</p>
-                          <ul className="list-disc list-inside space-y-1 ml-2">
+                          <ul className="space-y-1 ml-2">
                             {option.cons.map((con, i) => (
-                              <li key={i} className="text-sm leading-relaxed">{con}</li>
+                              <li key={i} className="text-sm leading-relaxed flex items-start gap-2">
+                                <span className="text-muted-foreground mt-0.5">•</span>
+                                <TextWithSource text={con} />
+                              </li>
                             ))}
                           </ul>
                         </div>
@@ -184,14 +220,15 @@ export function BriefDisplay({ brief, metadata, onGenerateAnother }: BriefDispla
           {brief.risksTradeoffs.length > 0 && (
             <>
               <Separator />
-              <section>
+              <section data-testid="section-risks">
                 <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-3">
                   Risks & Trade-offs
                 </h3>
-                <ul className="space-y-2 list-disc list-inside" data-testid="list-risks">
+                <ul className="space-y-3" data-testid="list-risks">
                   {brief.risksTradeoffs.map((item, index) => (
-                    <li key={index} className="text-base leading-relaxed">
-                      {item}
+                    <li key={index} className="text-base leading-relaxed flex items-start gap-2">
+                      <span className="text-muted-foreground mt-1">•</span>
+                      <TextWithSource text={item} />
                     </li>
                   ))}
                 </ul>
@@ -202,14 +239,15 @@ export function BriefDisplay({ brief, metadata, onGenerateAnother }: BriefDispla
           <Separator />
 
           {/* Decisions */}
-          <section>
+          <section data-testid="section-decisions">
             <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-3">
               Decision(s) to Make
             </h3>
-            <ul className="space-y-2 list-disc list-inside" data-testid="list-decisions">
+            <ul className="space-y-3" data-testid="list-decisions">
               {brief.decisions.map((item, index) => (
-                <li key={index} className="text-base leading-relaxed font-medium">
-                  {item}
+                <li key={index} className="text-base leading-relaxed font-medium flex items-start gap-2">
+                  <span className="text-muted-foreground mt-1">•</span>
+                  <TextWithSource text={item} />
                 </li>
               ))}
             </ul>
@@ -218,13 +256,13 @@ export function BriefDisplay({ brief, metadata, onGenerateAnother }: BriefDispla
           <Separator />
 
           {/* Action Checklist */}
-          <section>
+          <section data-testid="section-actions">
             <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-3">
               Action Checklist
             </h3>
             <div className="space-y-2 text-sm" data-testid="list-actions">
               {brief.actionChecklist.map((action, index) => (
-                <div key={index} className="font-mono leading-relaxed flex items-center gap-2">
+                <div key={index} className="font-mono leading-relaxed flex items-center gap-2 flex-wrap">
                   <span>{action.owner} • {action.task} • {action.dueDate}</span>
                   {action.source && (
                     <Badge variant="outline" className="text-xs font-normal">
@@ -240,7 +278,7 @@ export function BriefDisplay({ brief, metadata, onGenerateAnother }: BriefDispla
           {brief.sources && brief.sources.length > 0 && (
             <>
               <Separator />
-              <section>
+              <section data-testid="section-sources">
                 <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-3 flex items-center gap-2">
                   <FileCheck className="w-4 h-4" />
                   Sources
