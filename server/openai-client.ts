@@ -11,6 +11,7 @@ interface GenerateBriefParams {
   meetingType: string;
   audienceLevel: "exec" | "ic";
   documentContents: string;
+  uploadedFilenames: string[]; // List of all uploaded filenames
 }
 
 const MAX_RETRIES = 3;
@@ -85,11 +86,14 @@ function validateBriefStructure(brief: any): boolean {
 }
 
 export async function generateBriefWithAI(params: GenerateBriefParams) {
-  const { meetingTitle, attendees, meetingType, audienceLevel, documentContents } = params;
+  const { meetingTitle, attendees, meetingType, audienceLevel, documentContents, uploadedFilenames } = params;
 
   const isExec = audienceLevel === "exec";
   const maxWords = 350;
   const contextBullets = isExec ? 3 : 5;
+  
+  // Create explicit file list for AI
+  const fileListStr = uploadedFilenames.map(f => `- ${f}`).join("\n");
 
   const systemPrompt = `You are Brief Bot. From a meeting invite and uploaded files (docs/slides/notes/spreadsheets), produce a concise, decision-ready one-pager.
 
@@ -99,16 +103,25 @@ CRITICAL GROUNDING RULES:
 3. If information is not found in the documents, state "Not found in provided materials" or omit that section.
 4. Do not invent owners or dates. If unknown, use "TBD (role)" for owner and "TBD" for date.
 
+CITATION REQUIREMENTS - MANDATORY:
+- EVERY item in context, options, risksTradeoffs, and decisions MUST end with an inline citation in the format: " [Source: filename.ext]"
+- Use the exact filename from the documents provided
+- If a point draws from multiple documents, cite the primary one
+- The sources array MUST include an entry for EVERY uploaded file, even if minimally referenced
+
 OUTPUT FORMAT - JSON object with this exact structure:
 {
-  "goal": "string - one clear sentence describing the meeting objective, derived from documents",
-  "context": ["array of ≤${contextBullets} key points - ONLY facts from the documents"],
-  "options": [{"option": "string", "pros": ["array"], "cons": ["array"]}],
-  "risksTradeoffs": ["array of risks/trade-offs explicitly mentioned in documents"],
-  "decisions": ["array of specific decisions that must be made, as stated in documents"],
-  "actionChecklist": [{"owner": "string", "task": "string", "dueDate": "string", "source": "filename or section"}],
-  "sources": [{"label": "string", "filename": "string", "section": "string or null"}]
+  "goal": "string - one clear sentence describing the meeting objective [Source: filename.ext]",
+  "context": ["Each bullet MUST end with [Source: filename.ext]"],
+  "options": [{"option": "Option name [Source: filename.ext]", "pros": ["pro [Source: filename.ext]"], "cons": ["con [Source: filename.ext]"]}],
+  "risksTradeoffs": ["Each risk MUST end with [Source: filename.ext]"],
+  "decisions": ["Each decision MUST end with [Source: filename.ext]"],
+  "actionChecklist": [{"owner": "string", "task": "string", "dueDate": "string", "source": "filename.ext"}],
+  "sources": [{"label": "Description of content used", "filename": "exact_filename.ext", "section": "section name or null"}]
 }
+
+UPLOADED FILES (you MUST include ALL of these in the sources array):
+${fileListStr}
 
 ${isExec 
   ? "EXECUTIVE BRIEF: Compress context to ≤3 bullets. Emphasize options and risks. Focus on strategic implications."
@@ -116,23 +129,27 @@ ${isExec
 }
 
 REQUIREMENTS:
-- Total brief must be ≤${maxWords} words
+- Total brief must be ≤${maxWords} words (excluding citations)
 - Bullet-first, decision-first style
 - Include 2-3 options if decision context exists in documents
 - Action items format: "Owner • Task • Due" - use TBD if not specified in documents
-- ALWAYS include a "sources" array listing every document used with relevant section/page
-- Each bullet should be traceable to a source document
-- If the documents lack sufficient information for a section, include fewer items rather than fabricating`;
+- EVERY bullet point MUST have [Source: filename.ext] at the end
+- The sources array MUST include an entry for EACH of the ${uploadedFilenames.length} uploaded files listed above
+- If a document doesn't directly contribute to a section, still include it in sources with a note like "Referenced for background"`;
 
   const userPrompt = `Meeting: ${meetingTitle}
 Type: ${meetingType}
 Attendees: ${attendees}
 
-=== UPLOADED DOCUMENTS ===
+=== UPLOADED DOCUMENTS (${uploadedFilenames.length} files) ===
 ${documentContents}
 === END DOCUMENTS ===
 
-Generate a ${audienceLevel === "exec" ? "executive" : "IC"}-level brief using ONLY the information above. Include sources for all items.`;
+Generate a ${audienceLevel === "exec" ? "executive" : "IC"}-level brief using ONLY the information above. 
+
+IMPORTANT: 
+1. Every bullet point in context, options, risksTradeoffs, and decisions MUST end with [Source: filename.ext]
+2. The sources array MUST include ALL ${uploadedFilenames.length} files: ${uploadedFilenames.join(", ")}`;
 
   try {
     const content = await callOpenAIWithRetry(systemPrompt, userPrompt);
@@ -151,12 +168,24 @@ Generate a ${audienceLevel === "exec" ? "executive" : "IC"}-level brief using ON
       throw new Error("AI response missing required fields");
     }
 
-    // Ensure sources array exists
+    // Ensure sources array exists and includes all uploaded files
     if (!Array.isArray(brief.sources)) {
       brief.sources = [];
     }
+    
+    // Check if all uploaded files are in sources, add missing ones
+    const sourcedFiles = new Set(brief.sources.map((s: any) => s.filename?.toLowerCase()));
+    for (const filename of uploadedFilenames) {
+      if (!sourcedFiles.has(filename.toLowerCase())) {
+        brief.sources.push({
+          label: "Referenced document",
+          filename: filename,
+          section: null
+        });
+      }
+    }
 
-    // Calculate word count
+    // Calculate word count (excluding citations in brackets)
     const wordCount = calculateWordCount(brief);
 
     // Enforce word count limit
@@ -184,37 +213,40 @@ Generate a ${audienceLevel === "exec" ? "executive" : "IC"}-level brief using ON
 }
 
 function calculateWordCount(brief: any): number {
-  let text = brief.goal || "";
+  // Helper to remove citation brackets from text
+  const removeCitations = (text: string): string => {
+    return text.replace(/\s*\[Source:[^\]]+\]/g, "");
+  };
+
+  let text = removeCitations(brief.goal || "");
   
   if (Array.isArray(brief.context)) {
-    text += " " + brief.context.join(" ");
+    text += " " + brief.context.map(removeCitations).join(" ");
   }
   
   if (Array.isArray(brief.options)) {
     brief.options.forEach((opt: any) => {
-      text += " " + (opt.option || "");
-      if (Array.isArray(opt.pros)) text += " " + opt.pros.join(" ");
-      if (Array.isArray(opt.cons)) text += " " + opt.cons.join(" ");
+      text += " " + removeCitations(opt.option || "");
+      if (Array.isArray(opt.pros)) text += " " + opt.pros.map(removeCitations).join(" ");
+      if (Array.isArray(opt.cons)) text += " " + opt.cons.map(removeCitations).join(" ");
     });
   }
   
   if (Array.isArray(brief.risksTradeoffs)) {
-    text += " " + brief.risksTradeoffs.join(" ");
+    text += " " + brief.risksTradeoffs.map(removeCitations).join(" ");
   }
   
   if (Array.isArray(brief.decisions)) {
-    text += " " + brief.decisions.join(" ");
+    text += " " + brief.decisions.map(removeCitations).join(" ");
   }
   
   if (Array.isArray(brief.actionChecklist)) {
     brief.actionChecklist.forEach((action: any) => {
       text += " " + (action.owner || "") + " " + (action.task || "") + " " + (action.dueDate || "");
-      if (action.source) text += " " + action.source;
     });
   }
 
   // Note: Sources are metadata/citations and not counted toward the 350 word limit
-  // They provide traceability without inflating the brief content word count
 
-  return text.trim().split(/\s+/).length;
+  return text.trim().split(/\s+/).filter(w => w.length > 0).length;
 }

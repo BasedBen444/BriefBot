@@ -81,6 +81,9 @@ async function processJob(jobId: number) {
     const combinedContent = documentContents
       .map(doc => `--- ${doc.filename} ---\n${doc.content}`)
       .join("\n\n");
+    
+    // Extract list of uploaded filenames
+    const uploadedFilenames = documentContents.map(doc => doc.filename);
 
     // Update progress
     await dbStorage.updateJob(jobId, { progress: 30 });
@@ -92,6 +95,7 @@ async function processJob(jobId: number) {
       meetingType: metadata.meetingType,
       audienceLevel: metadata.audienceLevel,
       documentContents: combinedContent,
+      uploadedFilenames: uploadedFilenames,
     });
 
     // Update progress

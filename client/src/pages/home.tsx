@@ -22,6 +22,64 @@ interface JobResponse {
   brief: Brief | null;
 }
 
+// LocalStorage keys for persisting job state
+const STORAGE_KEYS = {
+  JOB_ID: "briefbot_active_job_id",
+  METADATA: "briefbot_job_metadata",
+};
+
+// Helper functions for localStorage
+function getStoredJobId(): number | null {
+  try {
+    const stored = localStorage.getItem(STORAGE_KEYS.JOB_ID);
+    return stored ? parseInt(stored, 10) : null;
+  } catch {
+    return null;
+  }
+}
+
+function setStoredJobId(jobId: number | null): void {
+  try {
+    if (jobId === null) {
+      localStorage.removeItem(STORAGE_KEYS.JOB_ID);
+    } else {
+      localStorage.setItem(STORAGE_KEYS.JOB_ID, String(jobId));
+    }
+  } catch {
+    // Ignore storage errors
+  }
+}
+
+function getStoredMetadata(): MeetingMetadata | null {
+  try {
+    const stored = localStorage.getItem(STORAGE_KEYS.METADATA);
+    return stored ? JSON.parse(stored) : null;
+  } catch {
+    return null;
+  }
+}
+
+function setStoredMetadata(metadata: MeetingMetadata | null): void {
+  try {
+    if (metadata === null) {
+      localStorage.removeItem(STORAGE_KEYS.METADATA);
+    } else {
+      localStorage.setItem(STORAGE_KEYS.METADATA, JSON.stringify(metadata));
+    }
+  } catch {
+    // Ignore storage errors
+  }
+}
+
+function clearStoredJobState(): void {
+  try {
+    localStorage.removeItem(STORAGE_KEYS.JOB_ID);
+    localStorage.removeItem(STORAGE_KEYS.METADATA);
+  } catch {
+    // Ignore storage errors
+  }
+}
+
 export default function Home() {
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
   const [metadata, setMetadata] = useState<MeetingMetadata | null>(null);
@@ -53,6 +111,7 @@ export default function Home() {
           setGeneratedBrief(data.brief);
           setIsPolling(false);
           setJobId(null);
+          clearStoredJobState(); // Clear localStorage
           if (pollingIntervalRef.current) {
             clearInterval(pollingIntervalRef.current);
             pollingIntervalRef.current = null;
@@ -61,6 +120,7 @@ export default function Home() {
           // Job failed
           setIsPolling(false);
           setJobId(null);
+          clearStoredJobState(); // Clear localStorage
           if (pollingIntervalRef.current) {
             clearInterval(pollingIntervalRef.current);
             pollingIntervalRef.current = null;
@@ -78,6 +138,19 @@ export default function Home() {
       // Don't stop polling on transient errors
     }
   }, [toast]);
+
+  // Check for existing job on mount (resume after navigation)
+  useEffect(() => {
+    const storedJobId = getStoredJobId();
+    const storedMetadata = getStoredMetadata();
+    
+    if (storedJobId && storedMetadata) {
+      // Resume polling for existing job
+      setJobId(storedJobId);
+      setMetadata(storedMetadata);
+      setIsPolling(true);
+    }
+  }, []);
 
   // Start polling when jobId changes
   useEffect(() => {
@@ -99,7 +172,7 @@ export default function Home() {
     }
   }, [jobId, isPolling, pollJobStatus]);
 
-  // Cleanup on unmount
+  // Cleanup on unmount - but DON'T clear localStorage (allow resume)
   useEffect(() => {
     return () => {
       if (pollingIntervalRef.current) {
@@ -128,6 +201,8 @@ export default function Home() {
         setJobId(data.jobId);
         setJobProgress(0);
         setIsPolling(true);
+        // Store job state in localStorage for resume after navigation
+        setStoredJobId(data.jobId);
       }
     },
     onError: (error) => {
@@ -143,6 +218,8 @@ export default function Home() {
     if (uploadedFiles.length === 0) return;
 
     setMetadata(formMetadata);
+    // Store metadata in localStorage for resume after navigation
+    setStoredMetadata(formMetadata);
     
     const formData = new FormData();
     formData.append("metadata", JSON.stringify(formMetadata));
@@ -161,6 +238,7 @@ export default function Home() {
     setJobId(null);
     setJobProgress(0);
     setIsPolling(false);
+    clearStoredJobState(); // Clear localStorage
     if (pollingIntervalRef.current) {
       clearInterval(pollingIntervalRef.current);
       pollingIntervalRef.current = null;
