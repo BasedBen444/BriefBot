@@ -147,6 +147,24 @@ export type Document = typeof documents.$inferSelect;
 export type InsertDocument = typeof documents.$inferInsert;
 export const insertDocumentSchema = createInsertSchema(documents).omit({ id: true, createdAt: true });
 
+// Brief generation jobs table (for async processing)
+export const briefJobs = pgTable("brief_jobs", {
+  id: serial("id").primaryKey(),
+  status: varchar("status", { length: 20 }).notNull().default("pending"), // pending, processing, completed, failed
+  metadata: jsonb("metadata").notNull().$type<MeetingMetadata>(),
+  documentContents: jsonb("document_contents").notNull().$type<Array<{ filename: string; content: string }>>(),
+  documentFiles: jsonb("document_files").$type<Array<{ filename: string; fileType: string; fileSize: number }>>(),
+  resultBriefId: integer("result_brief_id").references(() => briefs.id),
+  error: text("error"),
+  progress: integer("progress").default(0), // 0-100 progress percentage
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export type BriefJob = typeof briefJobs.$inferSelect;
+export type InsertBriefJob = typeof briefJobs.$inferInsert;
+export const insertBriefJobSchema = createInsertSchema(briefJobs).omit({ id: true, createdAt: true, updatedAt: true });
+
 // Analytics table (for decision tracking)
 export const decisionAnalytics = pgTable("decision_analytics", {
   id: serial("id").primaryKey(),
@@ -206,5 +224,12 @@ export const decisionAnalyticsRelations = relations(decisionAnalytics, ({ one })
   meeting: one(meetings, {
     fields: [decisionAnalytics.meetingId],
     references: [meetings.id],
+  }),
+}));
+
+export const briefJobsRelations = relations(briefJobs, ({ one }) => ({
+  resultBrief: one(briefs, {
+    fields: [briefJobs.resultBriefId],
+    references: [briefs.id],
   }),
 }));

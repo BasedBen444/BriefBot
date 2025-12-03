@@ -10,11 +10,14 @@ import {
   type InsertDocument,
   type DecisionAnalytic,
   type InsertDecisionAnalytic,
+  type BriefJob,
+  type InsertBriefJob,
   users,
   meetings,
   briefs,
   documents,
   decisionAnalytics,
+  briefJobs,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc } from "drizzle-orm";
@@ -47,6 +50,12 @@ export interface IStorage {
   getAnalyticsByMeeting(meetingId: number): Promise<DecisionAnalytic[]>;
   createAnalytic(analytic: InsertDecisionAnalytic): Promise<DecisionAnalytic>;
   updateAnalytic(id: number, data: Partial<InsertDecisionAnalytic>): Promise<DecisionAnalytic>;
+  
+  // Job methods
+  getJob(id: number): Promise<BriefJob | undefined>;
+  createJob(job: InsertBriefJob): Promise<BriefJob>;
+  updateJob(id: number, data: Partial<InsertBriefJob>): Promise<BriefJob>;
+  getPendingJobs(): Promise<BriefJob[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -206,6 +215,37 @@ export class DatabaseStorage implements IStorage {
       .where(eq(decisionAnalytics.id, id))
       .returning();
     return analytic;
+  }
+  
+  // Job methods
+  async getJob(id: number): Promise<BriefJob | undefined> {
+    const [job] = await db.select().from(briefJobs).where(eq(briefJobs.id, id));
+    return job || undefined;
+  }
+
+  async createJob(insertJob: InsertBriefJob): Promise<BriefJob> {
+    const [job] = await db
+      .insert(briefJobs)
+      .values(insertJob)
+      .returning();
+    return job;
+  }
+
+  async updateJob(id: number, data: Partial<InsertBriefJob>): Promise<BriefJob> {
+    const [job] = await db
+      .update(briefJobs)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(briefJobs.id, id))
+      .returning();
+    return job;
+  }
+
+  async getPendingJobs(): Promise<BriefJob[]> {
+    return await db
+      .select()
+      .from(briefJobs)
+      .where(eq(briefJobs.status, "pending"))
+      .orderBy(briefJobs.createdAt);
   }
 }
 

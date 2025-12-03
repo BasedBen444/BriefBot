@@ -1,0 +1,7 @@
+segment,deal_size,outcome,reason,competitor,notes
+SMB,5k,loss,price,AlphaSoft,"Client cited lower entry price; asked for 10% promo."
+SMB,4k,win,value,None,"Won on onboarding speed; price neutral."
+Mid,25k,loss,total_cost,MegaSuite,"Partner rebates tipped in their favor."
+Mid,30k,win,features,None,"Workflow automation module decisive."
+Ent,120k,loss,discounting,MegaSuite,"Enterprise asked for 25% discount; we capped at 15%."
+Ent,150k,win,relationship,None,"Renewal with expansion; price increased 2% without churn."
