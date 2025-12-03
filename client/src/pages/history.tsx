@@ -7,6 +7,10 @@ import { Link } from "wouter";
 import type { DbBrief } from "@shared/schema";
 import { format } from "date-fns";
 
+function stripSourceCitation(text: string): string {
+  return text.replace(/\s*\[Source:\s*[^\]]+\]\s*$/i, "").trim();
+}
+
 interface BriefWithMeetingData {
   id: number;
   meetingId: number;
@@ -140,7 +144,7 @@ export default function History() {
                         </h4>
                         <ul className="text-sm space-y-1 list-disc list-inside text-muted-foreground">
                           {brief.context.slice(0, 2).map((item, index) => (
-                            <li key={index}>{item}</li>
+                            <li key={index}>{stripSourceCitation(item)}</li>
                           ))}
                           {brief.context.length > 2 && (
                             <li className="text-xs">+{brief.context.length - 2} more</li>
@@ -157,7 +161,7 @@ export default function History() {
                         </h4>
                         <ul className="text-sm space-y-1 list-disc list-inside">
                           {brief.decisions.slice(0, 2).map((decision, index) => (
-                            <li key={index}>{decision}</li>
+                            <li key={index}>{stripSourceCitation(decision)}</li>
                           ))}
                           {brief.decisions.length > 2 && (
                             <li className="text-xs text-muted-foreground">
