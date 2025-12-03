@@ -1,0 +1,21 @@
+Title: Q4 Pricing Strategy Alignment
+Date/Time: 2025-12-02 14:00–15:00 America/Chicago
+Location: Zoom (link in calendar)
+Attendees: Alex Chen (PM), Priya Patel (Finance), Dan Romero (Sales), Mei Li (Operations), Jamie Brooks (Marketing)
+
+Description:
+Objective: Decide U.S. list-price change for Q4 (options: 0%, +3%, +5%). Lock by Dec 5 to update web/catalog, partner price lists, and promo calendar.
+
+Context links (labels only; do not follow externally in MVP):
+- Pricing Elasticity Deck (PE-Deck_v3.md)
+- Q3 Win/Loss Notes (q3_win_loss.csv)
+- Ops Constraints (ops_constraints.md)
+- Roadmap v4 (roadmap_v4.md)
+
+Notes for prep:
+- Please skim the deck sections “Elasticity Summary” and “Competitor Moves.”
+- Sales to confirm enterprise discounting behavior at +3% and +5%.
+- Ops to flag if price change timing collides with 12/10 fulfillment freeze.
+- Marketing to confirm messaging options if we raise prices mid-quarter.
+
+Audience hint: Exec

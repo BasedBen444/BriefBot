@@ -27,23 +27,33 @@ const storage = multer.diskStorage({
   },
 });
 
+const allowedTypes = [
+  "application/pdf",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  "text/plain",
+  "text/csv",
+  "text/markdown",
+  "application/vnd.ms-excel",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+];
+
+const allowedExtensions = [".pdf", ".docx", ".pptx", ".txt", ".csv", ".xls", ".xlsx", ".md"];
+
 const upload = multer({
   storage,
   limits: {
     fileSize: 10 * 1024 * 1024, // 10MB limit
   },
   fileFilter: (req, file, cb) => {
-    const allowedTypes = [
-      "application/pdf",
-      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-      "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-      "text/plain",
-    ];
+    const ext = path.extname(file.originalname).toLowerCase();
+    const isAllowedType = allowedTypes.includes(file.mimetype);
+    const isAllowedExt = allowedExtensions.includes(ext);
     
-    if (allowedTypes.includes(file.mimetype)) {
+    if (isAllowedType || isAllowedExt) {
       cb(null, true);
     } else {
-      cb(new Error("Invalid file type. Only PDF, DOCX, PPTX, and TXT files are allowed."));
+      cb(new Error("Invalid file type. Only PDF, DOCX, PPTX, TXT, CSV, XLS, XLSX, and MD files are allowed."));
     }
   },
 });
