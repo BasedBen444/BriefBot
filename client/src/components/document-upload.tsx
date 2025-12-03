@@ -15,23 +15,48 @@ const ACCEPTED_TYPES = [
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
   "application/vnd.openxmlformats-officedocument.presentationml.presentation",
   "text/plain",
+  "text/csv",
+  "text/markdown",
+  "application/vnd.ms-excel",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
 ];
 
-const ACCEPTED_EXTENSIONS = ".pdf,.docx,.pptx,.txt";
+const ACCEPTED_EXTENSIONS = ".pdf,.docx,.pptx,.txt,.csv,.xls,.xlsx,.md";
 
 export function DocumentUpload({ uploadedFiles, onFilesChange }: DocumentUploadProps) {
+  const getMimeType = (file: File): string => {
+    if (file.type && file.type !== "application/octet-stream") {
+      return file.type;
+    }
+    const ext = file.name.toLowerCase().split(".").pop();
+    const mimeMap: Record<string, string> = {
+      pdf: "application/pdf",
+      docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+      txt: "text/plain",
+      csv: "text/csv",
+      md: "text/markdown",
+      xls: "application/vnd.ms-excel",
+      xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    };
+    return mimeMap[ext || ""] || file.type;
+  };
+
   const handleFileSelect = useCallback((files: FileList | null) => {
     if (!files) return;
 
     const newFiles: UploadedFile[] = Array.from(files)
-      .filter(file => ACCEPTED_TYPES.includes(file.type))
-      .map(file => ({
-        id: `${Date.now()}-${file.name}`,
-        file,
-        name: file.name,
-        size: file.size,
-        type: file.type,
-      }));
+      .map(file => {
+        const mimeType = getMimeType(file);
+        return {
+          id: `${Date.now()}-${file.name}`,
+          file,
+          name: file.name,
+          size: file.size,
+          type: mimeType,
+        };
+      })
+      .filter(file => ACCEPTED_TYPES.includes(file.type));
 
     onFilesChange([...uploadedFiles, ...newFiles]);
   }, [uploadedFiles, onFilesChange]);
@@ -85,7 +110,7 @@ export function DocumentUpload({ uploadedFiles, onFilesChange }: DocumentUploadP
             Upload meeting materials, agendas, or related documents
           </p>
           <Badge variant="secondary" data-testid="badge-accepted-formats">
-            PDF, DOCX, PPTX, TXT
+            PDF, DOCX, PPTX, TXT, CSV, XLS, XLSX, MD
           </Badge>
         </label>
       </div>
