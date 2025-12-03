@@ -10,10 +10,17 @@ Help teams arrive at meetings already aligned on goals, context, decisions, and 
 - **Frontend**: React with TypeScript, Tailwind CSS, Shadcn UI components
 - **Backend**: Express.js with TypeScript
 - **AI**: OpenAI GPT-5 for brief generation
-- **File Processing**: Multer (uploads), Mammoth (DOCX), pdf-parse (PDF)
+- **File Processing**: Multer (uploads), Mammoth (DOCX), pdf-parse (PDF), csv-parse (CSV), xlsx (XLS/XLSX)
 - **Storage**: PostgreSQL database with Drizzle ORM (persistent with full history)
 
-## Recent Changes (November 17, 2025)
+## Recent Changes (December 3, 2025)
+- **Grounded AI System Prompt**: Revised system prompt with strict grounding rules ("use ONLY provided documents"), TBD policy for unknown owners/dates, audience-specific context limits (exec ≤3, ic ≤5), and "insufficient evidence" handling
+- **Source Citations**: Added mandatory sources array with label, filename, and section for all brief content; displayed in Sources section with badges
+- **Expanded File Support**: Added CSV, XLS/XLSX, and Markdown file parsing with csv-parse and xlsx libraries
+- **Server-side MIME Fallback**: Parser detects file types by extension when browser sends application/octet-stream
+- **Improved Data Fidelity**: CSV/Excel parsers preserve falsy values (0, false, empty strings) and handle headerless files
+
+## Previous Changes (November 17, 2025)
 - Initial implementation of complete MVP
 - Configured design system with Inter and JetBrains Mono fonts
 - Built all frontend components (DocumentUpload, MeetingForm, BriefDisplay, LoadingState)
@@ -53,10 +60,11 @@ Help teams arrive at meetings already aligned on goals, context, decisions, and 
 
 ### Document Upload
 - Drag-and-drop interface
-- Supports PDF, DOCX, PPTX, TXT files
+- Supports PDF, DOCX, PPTX, TXT, CSV, XLS, XLSX, and MD (Markdown) files
 - File size limit: 10MB per file
 - Multiple file upload support
 - Automatic file cleanup after processing
+- Server-side MIME type fallback by file extension
 
 ### Meeting Metadata Form
 - Meeting title and attendees
@@ -66,6 +74,9 @@ Help teams arrive at meetings already aligned on goals, context, decisions, and 
 
 ### AI Brief Generation
 - GPT-5 powered analysis of uploaded documents
+- **Strict grounding**: AI uses ONLY information from uploaded documents (no fabrication)
+- **TBD policy**: Unknown owners/dates are marked as "TBD (role)" or "TBD (date)"
+- **Source citations**: Every claim includes source with label, filename, and section
 - Audience-aware output:
   - **Executive briefs**: Emphasize options and risks, minimal context (≤3 bullets)
   - **IC briefs**: Include implementation details, fuller context (≤5 bullets)
@@ -76,6 +87,7 @@ Help teams arrive at meetings already aligned on goals, context, decisions, and 
   - Risks & Trade-offs
   - Decision(s) to Make
   - Action Checklist (Owner • Task • Due Date format)
+  - Sources (document citations for all content)
 - Word count limit: ≤350 words
 - Monospace font for action items (JetBrains Mono)
 
