@@ -21,6 +21,12 @@ Help teams arrive at meetings already aligned on goals, context, decisions, and 
   - Prevents duplicate briefs: checks for existing brief before generating
   - Database tracks event-to-brief mappings in `calendarEvents` table
   - Robust polling with max 60 attempts, exponential backoff, and error handling
+- **Calendar File Upload Support**: Attach supporting documents to calendar events
+  - Click on any event to expand and see upload options
+  - Drag-and-drop or browse to upload PDF, DOCX, PPTX, TXT, CSV, XLS, XLSX, MD files
+  - Files are parsed and included alongside event description in brief generation
+  - Progress bar shows real-time generation status
+  - Proper file cleanup after processing on all code paths
 
 ## Changes (December 3, 2025)
 - **Async Brief Generation**: Refactored brief generation to use a job-based async system to prevent timeouts with large/multiple files
