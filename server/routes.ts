@@ -74,7 +74,7 @@ async function processJob(jobId: number) {
       progress: 10,
     });
 
-    const metadata = job.metadata as MeetingMetadata;
+    const metadata = job.metadata as MeetingMetadata & { isCalendarEvent?: boolean };
     const documentContents = job.documentContents as Array<{ filename: string; content: string }>;
     const documentFiles = job.documentFiles as Array<{ filename: string; fileType: string; fileSize: number }> | null;
 
@@ -97,17 +97,21 @@ async function processJob(jobId: number) {
       audienceLevel: metadata.audienceLevel,
       documentContents: combinedContent,
       uploadedFilenames: uploadedFilenames,
+      isCalendarEvent: metadata.isCalendarEvent || false,
     });
 
     // Update progress
     await dbStorage.updateJob(jobId, { progress: 70 });
+
+    // Use enriched attendees from AI if available (for calendar events), otherwise use original
+    const finalAttendees = brief.enrichedAttendees || metadata.attendees;
 
     // Save to database
     // 1. Create meeting record
     const meeting = await dbStorage.createMeeting({
       userId: null, // No auth yet
       title: metadata.title,
-      attendees: metadata.attendees,
+      attendees: finalAttendees,
       meetingType: metadata.meetingType,
       audienceLevel: metadata.audienceLevel,
     });
@@ -518,12 +522,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
 
-      // Build metadata from event
-      const metadata: MeetingMetadata = {
+      // Build metadata from event (include isCalendarEvent flag for AI participant extraction)
+      const metadata = {
         title: event.summary,
         attendees: event.attendees.join(", ") || "TBD",
         meetingType: meetingType || "decision",
         audienceLevel: audienceLevel || "exec",
+        isCalendarEvent: true, // Flag for AI to extract participant roles from description
       };
 
       // Create job record

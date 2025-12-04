@@ -12,6 +12,7 @@ interface GenerateBriefParams {
   audienceLevel: "exec" | "ic";
   documentContents: string;
   uploadedFilenames: string[]; // List of all uploaded filenames
+  isCalendarEvent?: boolean; // Whether this is from a calendar event
 }
 
 const MAX_RETRIES = 3;
@@ -86,7 +87,7 @@ function validateBriefStructure(brief: any): boolean {
 }
 
 export async function generateBriefWithAI(params: GenerateBriefParams) {
-  const { meetingTitle, attendees, meetingType, audienceLevel, documentContents, uploadedFilenames } = params;
+  const { meetingTitle, attendees, meetingType, audienceLevel, documentContents, uploadedFilenames, isCalendarEvent } = params;
 
   const isExec = audienceLevel === "exec";
   const maxWords = 350;
@@ -94,6 +95,18 @@ export async function generateBriefWithAI(params: GenerateBriefParams) {
   
   // Create explicit file list for AI
   const fileListStr = uploadedFilenames.map(f => `- ${f}`).join("\n");
+
+  // Add participant extraction instructions for calendar events
+  const participantExtractionInstructions = isCalendarEvent ? `
+PARTICIPANT EXTRACTION:
+- The "attendees" field contains names from the calendar invite
+- ALSO scan the meeting description and uploaded documents for additional participant information
+- Look for patterns like: "Participants:", "Attendees:", "Presenters:", or mentions of people with roles/titles
+- Return an "enrichedAttendees" field that combines calendar attendees with any discovered roles/titles
+- Format: "Name (Role), Name (Role)" - e.g., "John Smith (PM), Sarah Chen (Eng Lead), Mike (Design)"
+- If a role is not found, just include the name without a role
+- This enriched list will be used in the meeting record
+` : "";
 
   const systemPrompt = `You are Brief Bot. From a meeting invite and uploaded files (docs/slides/notes/spreadsheets), produce a concise, decision-ready one-pager.
 
@@ -117,8 +130,10 @@ OUTPUT FORMAT - JSON object with this exact structure:
   "risksTradeoffs": ["Each risk MUST end with [Source: filename.ext]"],
   "decisions": ["Each decision MUST end with [Source: filename.ext]"],
   "actionChecklist": [{"owner": "string", "task": "string", "dueDate": "string", "source": "filename.ext"}],
-  "sources": [{"label": "Description of content used", "filename": "exact_filename.ext", "section": "section name or null"}]
+  "sources": [{"label": "Description of content used", "filename": "exact_filename.ext", "section": "section name or null"}],
+  "enrichedAttendees": "string - optional, only for calendar events: attendees with roles extracted from description/docs"
 }
+${participantExtractionInstructions}
 
 UPLOADED FILES (you MUST include ALL of these in the sources array):
 ${fileListStr}
