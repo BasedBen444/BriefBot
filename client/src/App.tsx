@@ -4,10 +4,11 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Button } from "@/components/ui/button";
-import { FileText, History as HistoryIcon } from "lucide-react";
+import { FileText, History as HistoryIcon, Calendar } from "lucide-react";
 import Home from "@/pages/home";
 import History from "@/pages/history";
 import BriefDetail from "@/pages/brief-detail";
+import CalendarPage from "@/pages/calendar";
 import NotFound from "@/pages/not-found";
 
 function Header() {
@@ -25,6 +26,12 @@ function Header() {
             <Button variant="ghost" size="sm" data-testid="nav-new-brief">
               <FileText className="mr-2 h-4 w-4" />
               New Brief
+            </Button>
+          </Link>
+          <Link href="/calendar">
+            <Button variant="ghost" size="sm" data-testid="nav-calendar">
+              <Calendar className="mr-2 h-4 w-4" />
+              Calendar
             </Button>
           </Link>
           <Link href="/history">
@@ -45,6 +52,7 @@ function Router() {
       <Header />
       <Switch>
         <Route path="/" component={Home} />
+        <Route path="/calendar" component={CalendarPage} />
         <Route path="/history" component={History} />
         <Route path="/brief/:id" component={BriefDetail} />
         <Route component={NotFound} />
