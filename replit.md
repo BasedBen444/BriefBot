@@ -14,6 +14,12 @@ Help teams arrive at meetings already aligned on goals, context, decisions, and 
 - **Storage**: PostgreSQL database with Drizzle ORM (persistent with full history)
 
 ## Recent Changes (December 4, 2025)
+- **Replit Auth Integration**: Users can now log in with Google, GitHub, Apple, and email
+  - Uses OpenID Connect (OIDC) with Replit as identity provider
+  - Session storage in PostgreSQL with automatic token refresh
+  - Landing page for unauthenticated users with "Sign In" button
+  - Header shows user avatar and logout button when authenticated
+  - Database stores user profiles with ID (from OIDC sub), email, first/last name, and profile image URL
 - **Google Calendar Integration**: Generate briefs directly from upcoming calendar events
   - Uses Replit's native Google Calendar connector for OAuth
   - `/calendar` page lists upcoming events with meeting type/audience selectors
@@ -92,6 +98,11 @@ Help teams arrive at meetings already aligned on goals, context, decisions, and 
 - `/server/openai-client.ts` - OpenAI integration for GPT-4o brief generation
 - `/server/document-parser.ts` - Document parsing utilities for various file types
 - `/server/google-calendar.ts` - Google Calendar API client using Replit OAuth connector
+- `/server/replitAuth.ts` - Replit Auth integration with OIDC, sessions, and token refresh
+
+### Auth Files
+- `/client/src/hooks/useAuth.ts` - React hook for checking authentication status
+- `/client/src/lib/authUtils.ts` - Auth utility functions (isUnauthorizedError)
 
 ### Shared Schema
 - `/shared/schema.ts` - Drizzle database schema with tables for users, meetings, briefs, documents, decision_analytics, briefJobs, and calendarEvents; includes TypeScript types, Zod schemas, and relational mappings
