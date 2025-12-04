@@ -233,3 +233,30 @@ export const briefJobsRelations = relations(briefJobs, ({ one }) => ({
     references: [briefs.id],
   }),
 }));
+
+// Calendar Events table (for tracking calendar-generated briefs)
+export const calendarEvents = pgTable("calendar_events", {
+  id: serial("id").primaryKey(),
+  calendarId: varchar("calendar_id", { length: 255 }).notNull(),
+  eventId: varchar("event_id", { length: 255 }).notNull(),
+  summary: varchar("summary", { length: 500 }).notNull(),
+  startTime: timestamp("start_time").notNull(),
+  endTime: timestamp("end_time").notNull(),
+  attendees: jsonb("attendees").$type<string[]>(),
+  description: text("description"),
+  htmlLink: varchar("html_link", { length: 1000 }),
+  briefId: integer("brief_id").references(() => briefs.id),
+  lastSyncedAt: timestamp("last_synced_at").defaultNow().notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export type CalendarEventRecord = typeof calendarEvents.$inferSelect;
+export type InsertCalendarEvent = typeof calendarEvents.$inferInsert;
+export const insertCalendarEventSchema = createInsertSchema(calendarEvents).omit({ id: true, createdAt: true, lastSyncedAt: true });
+
+export const calendarEventsRelations = relations(calendarEvents, ({ one }) => ({
+  brief: one(briefs, {
+    fields: [calendarEvents.briefId],
+    references: [briefs.id],
+  }),
+}));
