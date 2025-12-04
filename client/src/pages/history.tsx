@@ -8,7 +8,7 @@ import type { DbBrief } from "@shared/schema";
 import { format } from "date-fns";
 
 function stripSourceCitation(text: string): string {
-  return text.replace(/\s*\[Source:\s*[^\]]+\]\s*$/i, "").trim();
+  return text.replace(/\s*\[Source:\s*[^\]]+\]\.?\s*$/i, "").trim();
 }
 
 interface BriefWithMeetingData {

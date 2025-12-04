@@ -14,7 +14,8 @@ interface BriefDisplayProps {
 
 // Helper function to extract source citation from text
 function parseSourceCitation(text: string): { content: string; source: string | null } {
-  const sourceMatch = text.match(/\s*\[Source:\s*([^\]]+)\]\s*$/i);
+  // Match [Source: filename] anywhere near the end, possibly followed by punctuation
+  const sourceMatch = text.match(/\s*\[Source:\s*([^\]]+)\]\.?\s*$/i);
   if (sourceMatch) {
     return {
       content: text.replace(sourceMatch[0], "").trim(),
