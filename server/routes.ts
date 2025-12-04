@@ -406,9 +406,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Get upcoming events from a calendar
-  app.get("/api/calendar/events", async (req, res) => {
+  app.get("/api/calendar/events/:calendarId", async (req, res) => {
     try {
-      const calendarId = (req.query.calendarId as string) || "primary";
+      const calendarId = req.params.calendarId || "primary";
       const maxResults = parseInt(req.query.maxResults as string) || 10;
       
       const events = await googleCalendar.getUpcomingEvents(calendarId, maxResults);
