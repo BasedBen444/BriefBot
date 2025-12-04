@@ -27,6 +27,11 @@ Help teams arrive at meetings already aligned on goals, context, decisions, and 
   - Files are parsed and included alongside event description in brief generation
   - Progress bar shows real-time generation status
   - Proper file cleanup after processing on all code paths
+- **Smart Attendee Extraction**: AI extracts participant roles from calendar events
+  - Auto-populates attendees from Google Calendar event data
+  - GPT-4o scans event description and uploaded docs for participant info
+  - Enriches attendee names with roles (e.g., "John Smith (PM), Sarah Chen (Eng)")
+  - Returns `enrichedAttendees` field for calendar-based briefs
 
 ## Changes (December 3, 2025)
 - **Async Brief Generation**: Refactored brief generation to use a job-based async system to prevent timeouts with large/multiple files
