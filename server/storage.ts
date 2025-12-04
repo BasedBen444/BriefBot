@@ -12,15 +12,18 @@ import {
   type InsertDecisionAnalytic,
   type BriefJob,
   type InsertBriefJob,
+  type CalendarEventRecord,
+  type InsertCalendarEvent,
   users,
   meetings,
   briefs,
   documents,
   decisionAnalytics,
   briefJobs,
+  calendarEvents,
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, desc } from "drizzle-orm";
+import { eq, desc, and } from "drizzle-orm";
 
 export interface IStorage {
   // User methods
@@ -56,6 +59,12 @@ export interface IStorage {
   createJob(job: InsertBriefJob): Promise<BriefJob>;
   updateJob(id: number, data: Partial<InsertBriefJob>): Promise<BriefJob>;
   getPendingJobs(): Promise<BriefJob[]>;
+  
+  // Calendar event methods
+  getCalendarEvent(calendarId: string, eventId: string): Promise<CalendarEventRecord | undefined>;
+  getCalendarEventsByBrief(briefId: number): Promise<CalendarEventRecord[]>;
+  createCalendarEvent(event: InsertCalendarEvent): Promise<CalendarEventRecord>;
+  updateCalendarEvent(id: number, data: Partial<InsertCalendarEvent>): Promise<CalendarEventRecord>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -246,6 +255,44 @@ export class DatabaseStorage implements IStorage {
       .from(briefJobs)
       .where(eq(briefJobs.status, "pending"))
       .orderBy(briefJobs.createdAt);
+  }
+  
+  // Calendar event methods
+  async getCalendarEvent(calendarId: string, eventId: string): Promise<CalendarEventRecord | undefined> {
+    const [event] = await db
+      .select()
+      .from(calendarEvents)
+      .where(
+        and(
+          eq(calendarEvents.calendarId, calendarId),
+          eq(calendarEvents.eventId, eventId)
+        )
+      );
+    return event || undefined;
+  }
+
+  async getCalendarEventsByBrief(briefId: number): Promise<CalendarEventRecord[]> {
+    return await db
+      .select()
+      .from(calendarEvents)
+      .where(eq(calendarEvents.briefId, briefId));
+  }
+
+  async createCalendarEvent(insertEvent: InsertCalendarEvent): Promise<CalendarEventRecord> {
+    const [event] = await db
+      .insert(calendarEvents)
+      .values(insertEvent)
+      .returning();
+    return event;
+  }
+
+  async updateCalendarEvent(id: number, data: Partial<InsertCalendarEvent>): Promise<CalendarEventRecord> {
+    const [event] = await db
+      .update(calendarEvents)
+      .set({ ...data, lastSyncedAt: new Date() })
+      .where(eq(calendarEvents.id, id))
+      .returning();
+    return event;
   }
 }
 

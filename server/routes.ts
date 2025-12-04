@@ -425,7 +425,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Generate brief from a calendar event
   app.post("/api/calendar/generate-brief", async (req, res) => {
     try {
-      const { calendarId, eventId, meetingType, audienceLevel } = req.body;
+      const { calendarId, eventId, meetingType, audienceLevel, force } = req.body;
+      const actualCalendarId = calendarId || "primary";
 
       if (!eventId) {
         return res.status(400).json({
@@ -434,8 +435,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
 
+      // Check if we already have a brief for this event (unless force regenerate)
+      const existingEventRecord = await dbStorage.getCalendarEvent(actualCalendarId, eventId);
+      if (existingEventRecord?.briefId && !force) {
+        return res.json({
+          success: true,
+          existingBriefId: existingEventRecord.briefId,
+          message: "Brief already exists for this event",
+        });
+      }
+
       // Fetch the event details
-      const event = await googleCalendar.getEventById(calendarId || "primary", eventId);
+      const event = await googleCalendar.getEventById(actualCalendarId, eventId);
       
       if (!event) {
         return res.status(404).json({
@@ -483,6 +494,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
         progress: 0,
       });
 
+      // Create or update calendar event record (without briefId yet)
+      if (existingEventRecord) {
+        await dbStorage.updateCalendarEvent(existingEventRecord.id, {
+          summary: event.summary,
+          startTime: new Date(event.start),
+          endTime: new Date(event.end),
+          attendees: event.attendees,
+          description: event.description || null,
+          htmlLink: event.htmlLink,
+          briefId: null, // Will be updated when job completes
+        });
+      } else {
+        await dbStorage.createCalendarEvent({
+          calendarId: actualCalendarId,
+          eventId: event.id,
+          summary: event.summary,
+          startTime: new Date(event.start),
+          endTime: new Date(event.end),
+          attendees: event.attendees,
+          description: event.description || null,
+          htmlLink: event.htmlLink,
+          briefId: null, // Will be updated when job completes
+        });
+      }
+
       // Return job ID immediately
       res.json({
         success: true,
@@ -496,8 +532,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
         message: "Brief generation started. Poll /api/jobs/:id for status.",
       });
 
-      // Start processing the job asynchronously
-      processJob(job.id).catch(err => {
+      // Start processing the job asynchronously, then update calendar event
+      processJob(job.id).then(async () => {
+        const completedJob = await dbStorage.getJob(job.id);
+        if (completedJob?.status === "completed" && completedJob.resultBriefId) {
+          const calEvent = await dbStorage.getCalendarEvent(actualCalendarId, eventId);
+          if (calEvent) {
+            await dbStorage.updateCalendarEvent(calEvent.id, {
+              briefId: completedJob.resultBriefId,
+            });
+          }
+        }
+      }).catch(err => {
         console.error(`Background job ${job.id} failed:`, err);
       });
 

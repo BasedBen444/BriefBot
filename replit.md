@@ -13,7 +13,16 @@ Help teams arrive at meetings already aligned on goals, context, decisions, and 
 - **File Processing**: Multer (uploads), Mammoth (DOCX), pdf-parse (PDF), csv-parse (CSV), xlsx (XLS/XLSX)
 - **Storage**: PostgreSQL database with Drizzle ORM (persistent with full history)
 
-## Recent Changes (December 3, 2025)
+## Recent Changes (December 4, 2025)
+- **Google Calendar Integration**: Generate briefs directly from upcoming calendar events
+  - Uses Replit's native Google Calendar connector for OAuth
+  - `/calendar` page lists upcoming events with meeting type/audience selectors
+  - One-click brief generation from any calendar event
+  - Prevents duplicate briefs: checks for existing brief before generating
+  - Database tracks event-to-brief mappings in `calendarEvents` table
+  - Robust polling with max 60 attempts, exponential backoff, and error handling
+
+## Changes (December 3, 2025)
 - **Async Brief Generation**: Refactored brief generation to use a job-based async system to prevent timeouts with large/multiple files
   - POST /api/generate-brief now returns a jobId immediately
   - Frontend polls GET /api/jobs/:id for status and progress (every 1.5s)
@@ -58,6 +67,7 @@ Help teams arrive at meetings already aligned on goals, context, decisions, and 
 - `/client/src/pages/home.tsx` - Main application page with upload, form, and brief display
 - `/client/src/pages/history.tsx` - Brief history page showing all generated briefs
 - `/client/src/pages/brief-detail.tsx` - Individual brief detail view with full metadata
+- `/client/src/pages/calendar.tsx` - Calendar events page for generating briefs from meetings
 - `/client/src/App.tsx` - Main app with header navigation and routing
 - `/client/src/components/document-upload.tsx` - Drag-and-drop file upload component
 - `/client/src/components/meeting-form.tsx` - Meeting metadata form (title, attendees, type, audience)
@@ -65,14 +75,15 @@ Help teams arrive at meetings already aligned on goals, context, decisions, and 
 - `/client/src/components/loading-state.tsx` - Loading skeleton during brief generation
 
 ### Backend Structure
-- `/server/routes.ts` - API endpoints for health check, brief generation, and history
-- `/server/storage.ts` - Database storage layer with joined queries for briefs + meetings
+- `/server/routes.ts` - API endpoints for health check, brief generation, history, and calendar
+- `/server/storage.ts` - Database storage layer with joined queries for briefs + meetings + calendar events
 - `/server/db.ts` - Drizzle database connection configuration
-- `/server/openai-client.ts` - OpenAI integration for GPT-5 brief generation
+- `/server/openai-client.ts` - OpenAI integration for GPT-4o brief generation
 - `/server/document-parser.ts` - Document parsing utilities for various file types
+- `/server/google-calendar.ts` - Google Calendar API client using Replit OAuth connector
 
 ### Shared Schema
-- `/shared/schema.ts` - Drizzle database schema with tables for users, meetings, briefs, documents, and decision_analytics; includes TypeScript types, Zod schemas, and relational mappings
+- `/shared/schema.ts` - Drizzle database schema with tables for users, meetings, briefs, documents, decision_analytics, briefJobs, and calendarEvents; includes TypeScript types, Zod schemas, and relational mappings
 
 ## Key Features
 

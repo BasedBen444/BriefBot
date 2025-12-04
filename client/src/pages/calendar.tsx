@@ -59,7 +59,17 @@ export default function CalendarPage() {
       });
       return response.json();
     },
-    onSuccess: (data: { success: boolean; jobId?: number; event?: { summary: string } }) => {
+    onSuccess: (data: { success: boolean; jobId?: number; existingBriefId?: number; event?: { summary: string } }) => {
+      if (data.existingBriefId) {
+        toast({
+          title: "Brief already exists",
+          description: "Redirecting to existing brief...",
+        });
+        navigate(`/brief/${data.existingBriefId}`);
+        setGeneratingEventId(null);
+        return;
+      }
+      
       toast({
         title: "Brief generation started",
         description: `Generating brief for "${data.event?.summary || 'event'}". You'll be redirected when ready.`,
@@ -79,27 +89,63 @@ export default function CalendarPage() {
   });
 
   const pollForCompletion = async (jobId: number) => {
+    const MAX_ATTEMPTS = 60;
+    const BASE_DELAY = 1500;
+    let attempts = 0;
+
     const poll = async () => {
-      const response = await fetch(`/api/jobs/${jobId}`);
-      const data = await response.json();
+      attempts++;
       
-      if (data.job?.status === "completed" && data.brief?.id) {
-        toast({
-          title: "Brief ready",
-          description: "Your meeting brief has been generated.",
-        });
-        queryClient.invalidateQueries({ queryKey: ["/api/briefs"] });
-        navigate(`/brief/${data.brief.id}`);
-        setGeneratingEventId(null);
-      } else if (data.job?.status === "failed") {
-        toast({
-          title: "Brief generation failed",
-          description: data.job.error || "An error occurred",
-          variant: "destructive",
-        });
-        setGeneratingEventId(null);
-      } else {
-        setTimeout(poll, 1500);
+      try {
+        const response = await fetch(`/api/jobs/${jobId}`);
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+        const data = await response.json();
+        
+        if (data.job?.status === "completed" && data.brief?.id) {
+          toast({
+            title: "Brief ready",
+            description: "Your meeting brief has been generated.",
+          });
+          queryClient.invalidateQueries({ queryKey: ["/api/briefs"] });
+          navigate(`/brief/${data.brief.id}`);
+          setGeneratingEventId(null);
+          return;
+        } else if (data.job?.status === "failed") {
+          toast({
+            title: "Brief generation failed",
+            description: data.job.error || "An error occurred",
+            variant: "destructive",
+          });
+          setGeneratingEventId(null);
+          return;
+        }
+        
+        if (attempts >= MAX_ATTEMPTS) {
+          toast({
+            title: "Generation timeout",
+            description: "Brief generation is taking too long. Please check the history page later.",
+            variant: "destructive",
+          });
+          setGeneratingEventId(null);
+          return;
+        }
+        
+        const delay = Math.min(BASE_DELAY * Math.pow(1.1, attempts - 1), 5000);
+        setTimeout(poll, delay);
+      } catch (error) {
+        if (attempts >= MAX_ATTEMPTS) {
+          toast({
+            title: "Connection error",
+            description: "Failed to check generation status. Please check the history page.",
+            variant: "destructive",
+          });
+          setGeneratingEventId(null);
+          return;
+        }
+        const delay = Math.min(BASE_DELAY * Math.pow(1.5, attempts - 1), 10000);
+        setTimeout(poll, delay);
       }
     };
     poll();
