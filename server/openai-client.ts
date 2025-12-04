@@ -130,8 +130,8 @@ OUTPUT FORMAT - JSON object with this exact structure:
   "risksTradeoffs": ["Each risk MUST end with [Source: filename.ext]"],
   "decisions": ["Each decision MUST end with [Source: filename.ext]"],
   "actionChecklist": [{"owner": "string", "task": "string", "dueDate": "string", "source": "filename.ext"}],
-  "sources": [{"label": "Description of content used", "filename": "exact_filename.ext", "section": "section name or null"}],
-  "enrichedAttendees": "string - optional, only for calendar events: attendees with roles extracted from description/docs"
+  "sources": [{"label": "Description of content used", "filename": "exact_filename.ext", "section": "section name or null"}]${isCalendarEvent ? `,
+  "enrichedAttendees": "string - attendees with roles extracted from description/docs, format: Name (Role), Name (Role)"` : ""}
 }
 ${participantExtractionInstructions}
 
