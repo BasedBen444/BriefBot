@@ -422,13 +422,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Generate brief from a calendar event
-  app.post("/api/calendar/generate-brief", async (req, res) => {
+  // Generate brief from a calendar event (with optional file uploads)
+  app.post("/api/calendar/generate-brief", upload.array("files", 10), async (req, res) => {
+    const uploadedFiles = (req.files as Express.Multer.File[]) || [];
+    
     try {
       const { calendarId, eventId, meetingType, audienceLevel, force } = req.body;
       const actualCalendarId = calendarId || "primary";
 
       if (!eventId) {
+        // Clean up uploaded files on error
+        for (const file of uploadedFiles) {
+          cleanupFile(file.path);
+        }
         return res.status(400).json({
           success: false,
           error: "Event ID is required",
@@ -438,6 +444,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Check if we already have a brief for this event (unless force regenerate)
       const existingEventRecord = await dbStorage.getCalendarEvent(actualCalendarId, eventId);
       if (existingEventRecord?.briefId && !force) {
+        // Clean up uploaded files since we're not processing
+        for (const file of uploadedFiles) {
+          cleanupFile(file.path);
+        }
         return res.json({
           success: true,
           existingBriefId: existingEventRecord.briefId,
@@ -449,27 +459,62 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const event = await googleCalendar.getEventById(actualCalendarId, eventId);
       
       if (!event) {
+        // Clean up uploaded files on error
+        for (const file of uploadedFiles) {
+          cleanupFile(file.path);
+        }
         return res.status(404).json({
           success: false,
           error: "Event not found",
         });
       }
 
-      // Build document content from event description
+      // Build document content from uploaded files and event description
       const documentContents: Array<{ filename: string; content: string }> = [];
+      const documentFiles: Array<{ filename: string; fileType: string; fileSize: number }> = [];
       
+      // Parse uploaded files
+      for (const file of uploadedFiles) {
+        try {
+          const content = await parseDocument(file.path, file.mimetype, file.originalname);
+          documentContents.push({
+            filename: file.originalname,
+            content: content,
+          });
+          documentFiles.push({
+            filename: file.originalname,
+            fileType: file.mimetype,
+            fileSize: file.size,
+          });
+        } catch (parseError) {
+          console.error(`Error parsing file ${file.originalname}:`, parseError);
+        }
+      }
+      
+      // Add event description as a source
       if (event.description) {
         documentContents.push({
           filename: "event_description.txt",
           content: event.description,
         });
+        documentFiles.push({
+          filename: "event_description.txt",
+          fileType: "text/plain",
+          fileSize: event.description.length,
+        });
       }
 
       // If no content available, create a minimal context
       if (documentContents.length === 0) {
+        const eventInfo = `Meeting: ${event.summary}\nAttendees: ${event.attendees.join(", ")}\nTime: ${event.start} - ${event.end}`;
         documentContents.push({
           filename: "event_info.txt",
-          content: `Meeting: ${event.summary}\nAttendees: ${event.attendees.join(", ")}\nTime: ${event.start} - ${event.end}`,
+          content: eventInfo,
+        });
+        documentFiles.push({
+          filename: "event_info.txt",
+          fileType: "text/plain",
+          fileSize: eventInfo.length,
         });
       }
 
@@ -486,11 +531,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         status: "pending",
         metadata: metadata,
         documentContents: documentContents,
-        documentFiles: documentContents.map(d => ({
-          filename: d.filename,
-          fileType: "text/plain",
-          fileSize: d.content.length,
-        })),
+        documentFiles: documentFiles,
         progress: 0,
       });
 
@@ -517,6 +558,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
           htmlLink: event.htmlLink,
           briefId: null, // Will be updated when job completes
         });
+      }
+
+      // Clean up uploaded files after parsing
+      for (const file of uploadedFiles) {
+        cleanupFile(file.path);
       }
 
       // Return job ID immediately
@@ -548,6 +594,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
 
     } catch (error) {
+      // Clean up uploaded files on error
+      for (const file of uploadedFiles) {
+        cleanupFile(file.path);
+      }
       console.error("Error generating brief from calendar event:", error);
       res.status(500).json({
         success: false,
