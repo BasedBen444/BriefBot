@@ -9,6 +9,7 @@ import { generateBriefWithAI } from "./openai-client";
 import { meetingMetadataSchema, type MeetingMetadata } from "@shared/schema";
 import { storage as dbStorage } from "./storage";
 import * as googleCalendar from "./google-calendar";
+import { setupAuth, isAuthenticated } from "./replitAuth";
 
 // Configure multer for file uploads (using memory/disk storage)
 const uploadDir = path.join(process.cwd(), "uploads");
@@ -173,6 +174,21 @@ async function processJob(jobId: number) {
 }
 
 export async function registerRoutes(app: Express): Promise<Server> {
+  // Set up Replit Auth
+  await setupAuth(app);
+
+  // Auth routes
+  app.get('/api/auth/user', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const user = await dbStorage.getUser(userId);
+      res.json(user);
+    } catch (error) {
+      console.error("Error fetching user:", error);
+      res.status(500).json({ message: "Failed to fetch user" });
+    }
+  });
+
   // Health check endpoint
   app.get("/api/health", (req, res) => {
     res.json({ status: "ok" });

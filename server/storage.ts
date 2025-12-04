@@ -1,7 +1,7 @@
-// Referenced from blueprint:javascript_database
+// Referenced from blueprint:javascript_database and blueprint:javascript_log_in_with_replit
 import { 
   type User, 
-  type InsertUser,
+  type UpsertUser,
   type Meeting,
   type InsertMeeting,
   type DbBrief,
@@ -26,20 +26,19 @@ import { db } from "./db";
 import { eq, desc, and } from "drizzle-orm";
 
 export interface IStorage {
-  // User methods
-  getUser(id: number): Promise<User | undefined>;
-  getUserByEmail(email: string): Promise<User | undefined>;
-  createUser(user: InsertUser): Promise<User>;
+  // User methods (required for Replit Auth)
+  getUser(id: string): Promise<User | undefined>;
+  upsertUser(user: UpsertUser): Promise<User>;
   
   // Meeting methods
   getMeeting(id: number): Promise<Meeting | undefined>;
-  getMeetingsByUser(userId: number): Promise<Meeting[]>;
+  getMeetingsByUser(userId: string): Promise<Meeting[]>;
   createMeeting(meeting: InsertMeeting): Promise<Meeting>;
   
   // Brief methods
   getBrief(id: number): Promise<DbBrief | undefined>;
   getBriefsByMeeting(meetingId: number): Promise<DbBrief[]>;
-  getBriefsByUser(userId: number): Promise<DbBrief[]>;
+  getBriefsByUser(userId: string): Promise<DbBrief[]>;
   getAllBriefs(): Promise<DbBrief[]>;
   createBrief(brief: InsertBrief): Promise<DbBrief>;
   
@@ -68,21 +67,23 @@ export interface IStorage {
 }
 
 export class DatabaseStorage implements IStorage {
-  // User methods
-  async getUser(id: number): Promise<User | undefined> {
+  // User methods (required for Replit Auth)
+  async getUser(id: string): Promise<User | undefined> {
     const [user] = await db.select().from(users).where(eq(users.id, id));
     return user || undefined;
   }
 
-  async getUserByEmail(email: string): Promise<User | undefined> {
-    const [user] = await db.select().from(users).where(eq(users.email, email));
-    return user || undefined;
-  }
-
-  async createUser(insertUser: InsertUser): Promise<User> {
+  async upsertUser(userData: UpsertUser): Promise<User> {
     const [user] = await db
       .insert(users)
-      .values(insertUser)
+      .values(userData)
+      .onConflictDoUpdate({
+        target: users.id,
+        set: {
+          ...userData,
+          updatedAt: new Date(),
+        },
+      })
       .returning();
     return user;
   }
@@ -93,7 +94,7 @@ export class DatabaseStorage implements IStorage {
     return meeting || undefined;
   }
 
-  async getMeetingsByUser(userId: number): Promise<Meeting[]> {
+  async getMeetingsByUser(userId: string): Promise<Meeting[]> {
     return await db.select().from(meetings).where(eq(meetings.userId, userId));
   }
 
@@ -140,7 +141,7 @@ export class DatabaseStorage implements IStorage {
     }));
   }
 
-  async getBriefsByUser(userId: number): Promise<any[]> {
+  async getBriefsByUser(userId: string): Promise<any[]> {
     const result = await db
       .select({
         brief: briefs,

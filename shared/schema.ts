@@ -1,7 +1,7 @@
 import { z } from "zod";
-import { pgTable, serial, text, varchar, timestamp, integer, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, varchar, timestamp, integer, jsonb, index } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
-import { relations } from "drizzle-orm";
+import { relations, sql } from "drizzle-orm";
 
 // Meeting Metadata Schema
 export const meetingMetadataSchema = z.object({
@@ -83,24 +83,41 @@ export const uploadedFileSchema = z.object({
 export type UploadedFile = z.infer<typeof uploadedFileSchema>;
 
 // Database Tables
-// Referenced from blueprint:javascript_database
+// Referenced from blueprint:javascript_database and blueprint:javascript_log_in_with_replit
 
-// Users table
+// Session storage table for Replit Auth
+// (IMPORTANT) This table is mandatory for Replit Auth, don't drop it.
+export const sessions = pgTable(
+  "sessions",
+  {
+    sid: varchar("sid").primaryKey(),
+    sess: jsonb("sess").notNull(),
+    expire: timestamp("expire").notNull(),
+  },
+  (table) => [index("IDX_session_expire").on(table.expire)],
+);
+
+// User storage table for Replit Auth
+// (IMPORTANT) This table is mandatory for Replit Auth, don't drop it.
+// Uses varchar ID to store Replit OIDC 'sub' claim directly
 export const users = pgTable("users", {
-  id: serial("id").primaryKey(),
+  id: varchar("id", { length: 255 }).primaryKey(),
   email: varchar("email", { length: 255 }).unique(),
-  name: varchar("name", { length: 255 }),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
+  firstName: varchar("first_name", { length: 255 }),
+  lastName: varchar("last_name", { length: 255 }),
+  profileImageUrl: varchar("profile_image_url", { length: 500 }),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
 });
 
 export type User = typeof users.$inferSelect;
-export type InsertUser = typeof users.$inferInsert;
-export const insertUserSchema = createInsertSchema(users).omit({ id: true, createdAt: true });
+export type UpsertUser = typeof users.$inferInsert;
+export const insertUserSchema = createInsertSchema(users).omit({ createdAt: true, updatedAt: true });
 
 // Meetings table
 export const meetings = pgTable("meetings", {
   id: serial("id").primaryKey(),
-  userId: integer("user_id").references(() => users.id),
+  userId: varchar("user_id").references(() => users.id),
   title: varchar("title", { length: 500 }).notNull(),
   attendees: text("attendees").notNull(),
   meetingType: varchar("meeting_type", { length: 50 }).notNull(),
@@ -116,7 +133,7 @@ export const insertMeetingSchema = createInsertSchema(meetings).omit({ id: true,
 export const briefs = pgTable("briefs", {
   id: serial("id").primaryKey(),
   meetingId: integer("meeting_id").notNull().references(() => meetings.id),
-  userId: integer("user_id").references(() => users.id),
+  userId: varchar("user_id").references(() => users.id),
   goal: text("goal").notNull(),
   context: jsonb("context").notNull().$type<string[]>(),
   options: jsonb("options").notNull().$type<Array<{ option: string; pros: string[]; cons: string[] }>>(),
