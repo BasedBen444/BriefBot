@@ -8,6 +8,7 @@ import { parseDocument, cleanupFile } from "./document-parser";
 import { generateBriefWithAI } from "./openai-client";
 import { meetingMetadataSchema, type MeetingMetadata } from "@shared/schema";
 import { storage as dbStorage } from "./storage";
+import * as googleCalendar from "./google-calendar";
 
 // Configure multer for file uploads (using memory/disk storage)
 const uploadDir = path.join(process.cwd(), "uploads");
@@ -374,6 +375,138 @@ export async function registerRoutes(app: Express): Promise<Server> {
       for (const file of uploadedFiles) {
         cleanupFile(file.path);
       }
+    }
+  });
+
+  // ==================== Calendar Integration Routes ====================
+  
+  // Check if calendar is connected
+  app.get("/api/calendar/status", async (req, res) => {
+    try {
+      const connected = await googleCalendar.isCalendarConnected();
+      res.json({ success: true, connected });
+    } catch (error) {
+      console.error("Error checking calendar status:", error);
+      res.json({ success: true, connected: false });
+    }
+  });
+
+  // List available calendars
+  app.get("/api/calendar/list", async (req, res) => {
+    try {
+      const calendars = await googleCalendar.listCalendars();
+      res.json({ success: true, calendars });
+    } catch (error) {
+      console.error("Error listing calendars:", error);
+      res.status(500).json({
+        success: false,
+        error: error instanceof Error ? error.message : "Failed to list calendars",
+      });
+    }
+  });
+
+  // Get upcoming events from a calendar
+  app.get("/api/calendar/events", async (req, res) => {
+    try {
+      const calendarId = (req.query.calendarId as string) || "primary";
+      const maxResults = parseInt(req.query.maxResults as string) || 10;
+      
+      const events = await googleCalendar.getUpcomingEvents(calendarId, maxResults);
+      res.json({ success: true, events });
+    } catch (error) {
+      console.error("Error fetching calendar events:", error);
+      res.status(500).json({
+        success: false,
+        error: error instanceof Error ? error.message : "Failed to fetch events",
+      });
+    }
+  });
+
+  // Generate brief from a calendar event
+  app.post("/api/calendar/generate-brief", async (req, res) => {
+    try {
+      const { calendarId, eventId, meetingType, audienceLevel } = req.body;
+
+      if (!eventId) {
+        return res.status(400).json({
+          success: false,
+          error: "Event ID is required",
+        });
+      }
+
+      // Fetch the event details
+      const event = await googleCalendar.getEventById(calendarId || "primary", eventId);
+      
+      if (!event) {
+        return res.status(404).json({
+          success: false,
+          error: "Event not found",
+        });
+      }
+
+      // Build document content from event description
+      const documentContents: Array<{ filename: string; content: string }> = [];
+      
+      if (event.description) {
+        documentContents.push({
+          filename: "event_description.txt",
+          content: event.description,
+        });
+      }
+
+      // If no content available, create a minimal context
+      if (documentContents.length === 0) {
+        documentContents.push({
+          filename: "event_info.txt",
+          content: `Meeting: ${event.summary}\nAttendees: ${event.attendees.join(", ")}\nTime: ${event.start} - ${event.end}`,
+        });
+      }
+
+      // Build metadata from event
+      const metadata: MeetingMetadata = {
+        title: event.summary,
+        attendees: event.attendees.join(", ") || "TBD",
+        meetingType: meetingType || "decision",
+        audienceLevel: audienceLevel || "exec",
+      };
+
+      // Create job record
+      const job = await dbStorage.createJob({
+        status: "pending",
+        metadata: metadata,
+        documentContents: documentContents,
+        documentFiles: documentContents.map(d => ({
+          filename: d.filename,
+          fileType: "text/plain",
+          fileSize: d.content.length,
+        })),
+        progress: 0,
+      });
+
+      // Return job ID immediately
+      res.json({
+        success: true,
+        jobId: job.id,
+        event: {
+          id: event.id,
+          summary: event.summary,
+          start: event.start,
+          attendees: event.attendees,
+        },
+        message: "Brief generation started. Poll /api/jobs/:id for status.",
+      });
+
+      // Start processing the job asynchronously
+      processJob(job.id).catch(err => {
+        console.error(`Background job ${job.id} failed:`, err);
+      });
+
+    } catch (error) {
+      console.error("Error generating brief from calendar event:", error);
+      res.status(500).json({
+        success: false,
+        error: error instanceof Error ? error.message : "Failed to generate brief from event",
+      });
     }
   });
 
