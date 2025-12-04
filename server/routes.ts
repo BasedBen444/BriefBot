@@ -476,7 +476,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Parse uploaded files
       for (const file of uploadedFiles) {
         try {
-          const content = await parseDocument(file.path, file.mimetype, file.originalname);
+          const content = await parseDocument(file.path, file.mimetype);
           documentContents.push({
             filename: file.originalname,
             content: content,
